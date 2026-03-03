@@ -110,7 +110,7 @@ v20.20.0
 If you are not already inside it:
 
 ```bash
-cd my-app
+cd     projet-mi2-26/my-app
 ```
 
 ---
@@ -187,7 +187,7 @@ npm run dev
 # 📁 Project Structure Overview
 
 ```
-my-app/
+projet-mi2-26/my-app
 ├── package.json
 ├── package-lock.json
 ├── tailwind.config.js
