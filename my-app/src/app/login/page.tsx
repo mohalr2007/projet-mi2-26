@@ -1,13 +1,34 @@
 'use client';
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Logo } from "../../components/Logo";
 import { AnimatedInput } from "../../components/AnimatedInput";
 import { AnimatedButton } from "../../components/AnimatedButton";
 import { motion } from "framer-motion";
 import { Mail, Lock } from "lucide-react";
+import { useAuth } from "../../contexts/AuthContext";
+import { socialLogin } from "../../lib/api";
 
 export default function Login() {
+  const router = useRouter();
+  const { login, isLoading, error, fieldErrors, clearError } = useAuth();
+
+  // ── Form state ──────────────────────────────────────────────
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  // ── Form submission ─────────────────────────────────────────
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    clearError();
+
+    const success = await login({ email, password });
+    if (success) {
+      router.push("/"); // Redirect to home on success
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-green-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -23,7 +44,14 @@ export default function Login() {
             <p className="text-foreground/60">Sign in to continue to Mofid</p>
           </div>
 
-          <form className="space-y-6">
+          {/* Global error banner */}
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm text-center">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-6">
             {/* Email */}
             <AnimatedInput
               id="email"
@@ -34,6 +62,9 @@ export default function Login() {
               iconDelay={0}
               fieldDelay={0.1}
               required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              error={fieldErrors.email}
             />
 
             {/* Password */}
@@ -46,6 +77,9 @@ export default function Login() {
               iconDelay={0.5}
               fieldDelay={0.2}
               required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              error={fieldErrors.password}
             />
 
             {/* Remember Me */}
@@ -66,7 +100,7 @@ export default function Login() {
             </div>
 
             {/* Submit Button */}
-            <AnimatedButton>
+            <AnimatedButton isLoading={isLoading}>
               Sign In
             </AnimatedButton>
           </form>
@@ -80,7 +114,7 @@ export default function Login() {
 
           {/* Social Login */}
           <div className="grid grid-cols-2 gap-3">
-            <AnimatedButton variant="social" type="button">
+            <AnimatedButton variant="social" type="button" onClick={() => socialLogin("google")}>
               <svg className="size-5 flex-shrink-0 align-middle" viewBox="0 0 24 24">
                 <path
                   fill="currentColor"
@@ -101,7 +135,7 @@ export default function Login() {
               </svg>
               Google
             </AnimatedButton>
-            <AnimatedButton variant="social" type="button">
+            <AnimatedButton variant="social" type="button" onClick={() => socialLogin("facebook")}>
               <svg className="size-5 flex-shrink-0 align-middle" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
               </svg>

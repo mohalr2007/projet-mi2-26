@@ -12,6 +12,12 @@ interface AnimatedInputProps {
   fieldDelay?: number;
   required?: boolean;
   children?: React.ReactNode;
+  /** Controlled value — pass this + onChange to manage form state */
+  value?: string;
+  /** Called when the input value changes */
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  /** Per-field error message (e.g. from API validation) */
+  error?: string;
 }
 
 export function AnimatedInput({
@@ -24,6 +30,9 @@ export function AnimatedInput({
   fieldDelay = 0,
   required = false,
   children,
+  value,
+  onChange,
+  error,
 }: AnimatedInputProps) {
   return (
     <motion.div
@@ -60,7 +69,13 @@ export function AnimatedInput({
             type={type}
             placeholder={placeholder}
             required={required}
-            className="w-full pl-12 pr-4 py-3 bg-gray-50 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:shadow-blue-100 transition-all duration-200"
+            value={value}
+            onChange={onChange}
+            className={`w-full pl-12 pr-4 py-3 bg-gray-50 rounded-xl border ${
+              error
+                ? "border-red-400 focus:ring-red-500 focus:border-red-500"
+                : "border-border focus:ring-blue-500 focus:border-blue-500"
+            } focus:outline-none focus:ring-2 focus:shadow-blue-100 transition-all duration-200`}
             whileFocus={{ 
               scale: 1.01
             }}
@@ -68,6 +83,9 @@ export function AnimatedInput({
           />
         )}
       </div>
+      {error && (
+        <p className="text-red-500 text-xs mt-1">{error}</p>
+      )}
     </motion.div>
   );
 }

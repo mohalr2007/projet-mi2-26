@@ -1,14 +1,67 @@
 'use client';
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Logo } from "../../components/Logo";
 import { AnimatedInput } from "../../components/AnimatedInput";
 import { AnimatedButton } from "../../components/AnimatedButton";
 import { motion } from "framer-motion";
 import { Mail, Lock, User, Stethoscope } from "lucide-react";
+import { useAuth } from "../../contexts/AuthContext";
+import { socialLogin } from "../../lib/api";
 
 export default function Signup() {
+  const router = useRouter();
+  const { signup, isLoading, error, fieldErrors, clearError } = useAuth();
+
+  // ── Form state ──────────────────────────────────────────────
   const [accountType, setAccountType] = useState<"patient" | "doctor">("patient");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [specialty, setSpecialty] = useState("");
+  const [licenseNumber, setLicenseNumber] = useState("");
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+
+  // ── Client-side validation error ────────────────────────────
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  // ── Form submission ─────────────────────────────────────────
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLocalError(null);
+    clearError();
+
+    // Client-side checks before calling API
+    if (password.length < 8) {
+      setLocalError("Password must be at least 8 characters.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setLocalError("Passwords do not match.");
+      return;
+    }
+    if (!agreedToTerms) {
+      setLocalError("You must agree to the Terms of Service.");
+      return;
+    }
+
+    const success = await signup({
+      name,
+      email,
+      password,
+      accountType,
+      ...(accountType === "doctor" ? { specialty, licenseNumber } : {}),
+    });
+
+    if (success) {
+      router.push("/"); // Redirect to home on success
+    }
+  };
+
+  // Combined error (local validation or API)
+  const displayError = localError || error;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-green-50 flex items-center justify-center p-4">
@@ -25,9 +78,17 @@ export default function Signup() {
             <p className="text-foreground/60">Join Mofid today</p>
           </div>
 
+          {/* Global error banner */}
+          {displayError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm text-center">
+              {displayError}
+            </div>
+          )}
+
           {/* Account Type Selection */}
           <div className="grid grid-cols-2 gap-3 p-1 bg-gray-100 rounded-xl mb-6">
             <motion.button
+              type="button"
               onClick={() => setAccountType("patient")}
               className={`py-3 rounded-lg transition-all duration-200 relative overflow-hidden ${
                 accountType === "patient"
@@ -59,6 +120,7 @@ export default function Signup() {
               <span className="text-sm font-medium">Patient</span>
             </motion.button>
             <motion.button
+              type="button"
               onClick={() => setAccountType("doctor")}
               className={`py-3 rounded-lg transition-all duration-200 relative overflow-hidden ${
                 accountType === "doctor"
@@ -91,7 +153,7 @@ export default function Signup() {
             </motion.button>
           </div>
 
-          <form className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {/* Full Name */}
             <AnimatedInput
               id="name"
@@ -102,6 +164,9 @@ export default function Signup() {
               iconDelay={0}
               fieldDelay={0.1}
               required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              error={fieldErrors.name}
             />
 
             {/* Email */}
@@ -114,6 +179,9 @@ export default function Signup() {
               iconDelay={0.5}
               fieldDelay={0.2}
               required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              error={fieldErrors.email}
             />
 
             {/* Password */}
@@ -126,6 +194,9 @@ export default function Signup() {
               iconDelay={1}
               fieldDelay={0.3}
               required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              error={fieldErrors.password}
             />
             <p className="text-xs text-foreground/60 mt-2 -mb-4">
               Must be at least 8 characters
@@ -141,6 +212,8 @@ export default function Signup() {
               iconDelay={1.5}
               fieldDelay={0.4}
               required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
             />
 
             {/* Doctor-specific fields */}
@@ -158,6 +231,8 @@ export default function Signup() {
                 >
                   <select
                     id="specialty"
+                    value={specialty}
+                    onChange={(e) => setSpecialty(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:shadow-blue-100 transition-all duration-200"
                   >
                     <option value="">Select your specialty</option>
@@ -178,6 +253,9 @@ export default function Signup() {
                   iconDelay={2.5}
                   fieldDelay={0.6}
                   required
+                  value={licenseNumber}
+                  onChange={(e) => setLicenseNumber(e.target.value)}
+                  error={fieldErrors.licenseNumber}
                 />
               </>
             )}
@@ -187,6 +265,8 @@ export default function Signup() {
               <input
                 id="terms"
                 type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
                 className="size-4 rounded border-border text-primary focus:ring-primary mt-1"
               />
               <label htmlFor="terms" className="ml-2 text-sm text-foreground/70">
@@ -202,7 +282,7 @@ export default function Signup() {
             </div>
 
             {/* Submit Button */}
-            <AnimatedButton>
+            <AnimatedButton isLoading={isLoading}>
               Create Account
             </AnimatedButton>
           </form>
@@ -216,7 +296,7 @@ export default function Signup() {
 
           {/* Social Signup */}
           <div className="grid grid-cols-2 gap-3">
-            <AnimatedButton variant="social" type="button">
+            <AnimatedButton variant="social" type="button" onClick={() => socialLogin("google")}>
               <svg className="size-5 flex-shrink-0 align-middle" viewBox="0 0 24 24">
                 <path
                   fill="currentColor"
@@ -237,7 +317,7 @@ export default function Signup() {
               </svg>
               Google
             </AnimatedButton>
-            <AnimatedButton variant="social" type="button">
+            <AnimatedButton variant="social" type="button" onClick={() => socialLogin("facebook")}>
               <svg className="size-5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
               </svg>

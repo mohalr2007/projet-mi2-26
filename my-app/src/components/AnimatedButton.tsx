@@ -10,6 +10,8 @@ interface AnimatedButtonProps {
   onClick?: () => void;
   variant?: "primary" | "secondary" | "social" | "link";
   href?: string;
+  /** Show a spinner and disable the button while an async action is in progress */
+  isLoading?: boolean;
 }
 
 export function AnimatedButton({
@@ -20,6 +22,7 @@ export function AnimatedButton({
   onClick,
   variant = "primary",
   href,
+  isLoading = false,
 }: AnimatedButtonProps) {
   const baseStyles = "relative overflow-hidden font-medium transition-all duration-300 transform";
   
@@ -65,7 +68,14 @@ export function AnimatedButton({
       
       {/* Button content */}
       <span className="relative z-10 inline-flex items-center justify-center gap-2 leading-none">
-        {children}
+        {isLoading ? (
+          <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+        ) : (
+          children
+        )}
       </span>
       
       {/* Corner accent for primary variant */}
@@ -98,7 +108,7 @@ export function AnimatedButton({
   return (
     <motion.button
       type={type}
-      disabled={disabled}
+      disabled={disabled || isLoading}
       onClick={onClick}
       className={`${baseStyles} ${variants[variant]} ${className}`}
       whileHover={{ 
