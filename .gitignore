@@ -1,0 +1,28 @@
+# Node dependencies - NEVER upload to GitHub
+my-app/node_modules/
+node_modules/
+
+# Next.js build artifacts
+my-app/.next/
+my-app/out/
+.next/
+
+# Environment variables - NEVER upload!
+.env
+.env.local
+.env*.local
+my-app/.env
+my-app/.env.local
+my-app/.env*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
