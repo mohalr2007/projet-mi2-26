@@ -1,0 +1,14 @@
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Production build
+build/
+
+# Environmental variables (Security!)
+.env*.local
+
+# OS files
+.DS_Store
