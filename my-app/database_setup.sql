@@ -22,7 +22,7 @@ drop policy if exists "Les utilisateurs peuvent modifier leur propre profil" on 
 create policy "Les utilisateurs peuvent modifier leur propre profil" on public.profiles
   for update using ( auth.uid() = id );
 
--- Créer une fonction pour insérer automatiquement un profil lors de l'inscription
+-- made by mohamed - added UPSERT logic to handle updates after Google OAuth
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -36,7 +36,12 @@ begin
     new.raw_user_meta_data->>'account_type',
     new.raw_user_meta_data->>'specialty',
     new.raw_user_meta_data->>'license_number'
-  );
+  )
+  on conflict (id) do update set
+    full_name = excluded.full_name,
+    account_type = excluded.account_type,
+    specialty = excluded.specialty,
+    license_number = excluded.license_number;
   return new;
 end;
 $$;
@@ -44,5 +49,6 @@ $$;
 -- Créer le trigger qui appelle la fonction (s'il n'existe pas déjà)
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
-  after insert on auth.users
+  after insert or update on auth.users
   for each row execute procedure public.handle_new_user();
+-- made by mohamed

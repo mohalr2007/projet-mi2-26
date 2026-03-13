@@ -1,6 +1,7 @@
 'use client';
 import { motion } from "framer-motion";
-import { LucideIcon } from "lucide-react";
+import { LucideIcon, Eye, EyeOff } from "lucide-react";
+import { useState } from "react";
 
 interface AnimatedInputProps {
   id: string;
@@ -31,6 +32,12 @@ export function AnimatedInput({
   disabled = false,
   children,
 }: AnimatedInputProps) {
+  // made by mohamed - local state for password visibility toggle
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === 'password';
+  const currentType = isPassword ? (showPassword ? 'text' : 'password') : type;
+  // made by mohamed
+
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
@@ -61,20 +68,38 @@ export function AnimatedInput({
             {children}
           </div>
         ) : (
-          <motion.input
-            id={id}
-            type={type}
-            placeholder={placeholder}
-            required={required}
-            value={value}
-            onChange={onChange}
-            disabled={disabled}
-            className={`w-full pl-12 pr-4 py-3 bg-gray-50 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:shadow-blue-100 transition-all duration-200 ${disabled ? 'opacity-50 cursor-not-allowed bg-gray-200 text-gray-500' : ''}`}
-            whileFocus={disabled ? {} : {
-              scale: 1.01
-            }}
-            transition={{ type: "spring", stiffness: 400, damping: 25 }}
-          />
+          <>
+            <motion.input
+              id={id}
+              type={currentType}
+              placeholder={placeholder}
+              required={required}
+              value={value}
+              onChange={onChange}
+              disabled={disabled}
+              // made by mohamed - added padding right if it's a password field to make room for the eye icon
+              className={`w-full pl-12 pr-4 ${isPassword ? 'pr-12' : ''} py-3 bg-gray-50 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:shadow-blue-100 transition-all duration-200 ${disabled ? 'opacity-50 cursor-not-allowed bg-gray-200 text-gray-500' : ''}`}
+              whileFocus={disabled ? {} : {
+                scale: 1.01
+              }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            />
+            {/* made by mohamed - eye icon for password visibility */}
+            {isPassword && (
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+              >
+                {showPassword ? (
+                  <EyeOff className="size-5" />
+                ) : (
+                  <Eye className="size-5" />
+                )}
+              </button>
+            )}
+            {/* made by mohamed */}
+          </>
         )}
       </div>
     </motion.div>
