@@ -7,10 +7,11 @@ import { AnimatedInput } from "../../components/AnimatedInput";
 import { AnimatedButton } from "../../components/AnimatedButton";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, AlertCircle, CheckCircle2 } from "lucide-react";
-import { logInWithGoogle, logInUser } from "../../utils/supabase/auth";
+import { createClient } from "@/utils/supabase/client";
 
 export default function Login() {
   const router = useRouter();
+  const supabase = createClient();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,7 +21,20 @@ export default function Login() {
   const [success, setSuccess] = useState(false);
 
   const handleGoogleLogin = async () => {
-    await logInWithGoogle();
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`
+        }
+      });
+      
+      if (error) {
+        setError(error.message);
+      }
+    } catch (error) {
+      setError('An error occurred during Google sign in');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -28,21 +42,48 @@ export default function Login() {
     setError(null);
     setLoading(true);
 
-    const res = await logInUser(email, password);
-    setLoading(false);
+    try {
+      // Sign in user
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
 
-    if (!res.success) {
-      setError(res.error || "Une erreur est survenue lors de la connexion.");
-    } else {
-      setSuccess(true);
-      // made by mohamed - redirection based on account type
-      const accountType = res.user?.user_metadata?.account_type;
-      if (accountType === 'doctor') {
-        router.push('/dashboardoctlarabi');
-      } else {
-        router.push('/dashboardpatientlarabi');
+      if (authError) {
+        setError(authError.message);
+        setLoading(false);
+        return;
       }
-      // made by mohamed
+
+      if (authData.user) {
+        // Get user profile to determine account type
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('account_type')
+          .eq('id', authData.user.id)
+          .single();
+
+        if (profileError) {
+          setError('Login successful but failed to load profile');
+          setLoading(false);
+          return;
+        }
+
+        setSuccess(true);
+        
+        // Redirect based on account type
+        setTimeout(() => {
+          if (profile?.account_type === 'doctor') {
+            router.push('/doctor-dashboard');
+          } else {
+            router.push('/dashboardpatientlarabi');
+          }
+        }, 1500);
+      }
+    } catch (error) {
+      setError('Une erreur est survenue lors de la connexion');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -51,7 +92,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <Link href="/" className="flex items-center justify-center mb-8">
-          <Logo size={150} />
+          <Logo width={80} height={40} />
         </Link>
 
         {/* Login Card */}

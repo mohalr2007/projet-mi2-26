@@ -1,46 +1,113 @@
-// made by mohamed
 'use client';
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { logOutUser } from '../../utils/supabase/auth';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { createClient } from "../../utils/supabase/client";
+import { Logo } from "../../components/Logo";
 
 export default function DoctorDashboard() {
-    const router = useRouter();
-    const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const supabase = createClient();
 
-    const handleLogout = async () => {
-        setLoading(true);
-        await logOutUser();
-        router.push('/login');
-    };
+  const [fullName, setFullName] = useState<string | null>(null);
+  const [specialty, setSpecialty] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    async function loadProfile() {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        router.push("/login");
+        return;
+      }
+
+      // Fetch both full_name and specialty for the doctor
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("full_name, specialty")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError) {
+        console.error("Error fetching profile:", profileError.message);
+      } else {
+        setFullName(profile?.full_name ?? null);
+        setSpecialty(profile?.specialty ?? null);
+      }
+
+      setLoading(false);
+    }
+
+    loadProfile();
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/login");
+  };
+
+  if (loading) {
     return (
-        <div className="flex min-h-screen items-center justify-center p-8 bg-blue-50">
-            <div className="bg-white p-12 rounded-2xl shadow-lg border border-gray-100 text-center max-w-2xl">
-                <h1 className="text-4xl font-bold text-gray-800 mb-6">Tableau de bord - Docteur</h1>
-                <p className="text-gray-600 mb-8 text-lg">
-                    Ceci est une page de redirection temporaire après une connexion réussie en tant que Médecin.
-                </p>
-
-                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded text-left">
-                    <p className="font-semibold text-yellow-800">Note pour l'équipe Front-end :</p>
-                    <p className="text-yellow-700 text-sm mt-1">
-                        Vous pouvez complètement supprimer ce fichier ou remplacer son contenu par votre véritable design de dashboard.
-                        Le système d'authentification (login/signup) redirige automatiquement ici les utilisateurs ayant le rôle 'doctor'.
-                    </p>
-                </div>
-
-                {/* made by mohamed - logout button for testing */}
-                <button 
-                    onClick={handleLogout}
-                    disabled={loading}
-                    className="mt-8 px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow transition-colors font-medium disabled:opacity-50"
-                >
-                    {loading ? 'Déconnexion...' : 'Se déconnecter'}
-                </button>
-                {/* made by mohamed */}
-            </div>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
+        <p className="text-gray-500 text-lg">Loading your dashboard...</p>
+      </div>
     );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
+      {/* Navbar */}
+      <nav className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+        <Link href="/">
+          <Logo size={100} />
+        </Link>
+        <button
+          onClick={handleSignOut}
+          className="text-sm text-red-500 hover:text-red-700 transition-colors"
+        >
+          Sign Out
+        </button>
+      </nav>
+
+      {/* Main Content */}
+      <main className="max-w-4xl mx-auto px-4 py-16">
+        {/* Welcome Card */}
+        <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-10 text-center mb-10">
+          <div className="text-5xl mb-4">🩺</div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Welcome, Dr. {fullName ?? "Doctor"}!
+          </h1>
+          {specialty && (
+            <p className="text-blue-600 font-medium mb-2">{specialty}</p>
+          )}
+          <p className="text-gray-500">
+            This is your doctor portal. Manage your patients and appointments here.
+          </p>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="grid md:grid-cols-3 gap-6">
+          <div className="bg-white rounded-2xl shadow p-6 border border-gray-100 hover:shadow-md transition-shadow cursor-pointer">
+            <div className="text-3xl mb-3">📅</div>
+            <h3 className="font-semibold text-gray-800 mb-1">Appointments</h3>
+            <p className="text-sm text-gray-500">View today's schedule</p>
+          </div>
+          <div className="bg-white rounded-2xl shadow p-6 border border-gray-100 hover:shadow-md transition-shadow cursor-pointer">
+            <div className="text-3xl mb-3">👥</div>
+            <h3 className="font-semibold text-gray-800 mb-1">Patients</h3>
+            <p className="text-sm text-gray-500">Manage your patient list</p>
+          </div>
+          <div className="bg-white rounded-2xl shadow p-6 border border-gray-100 hover:shadow-md transition-shadow cursor-pointer">
+            <div className="text-3xl mb-3">⏰</div>
+            <h3 className="font-semibold text-gray-800 mb-1">Availability</h3>
+            <p className="text-sm text-gray-500">Set your available slots</p>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
 }
-// made by mohamed

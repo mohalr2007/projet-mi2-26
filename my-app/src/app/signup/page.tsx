@@ -7,12 +7,13 @@ import { AnimatedInput } from "../../components/AnimatedInput";
 import { AnimatedButton } from "../../components/AnimatedButton";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, User, Stethoscope, AlertCircle, CheckCircle2 } from "lucide-react";
-import { logInWithGoogle, signUpUser, updateUserProfile, getCurrentUser } from "../../utils/supabase/auth";
+import { createClient } from "@/utils/supabase/client";
 
 // made by mohamed
 function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const supabase = createClient();
 
   const [accountType, setAccountType] = useState<"patient" | "doctor">("patient");
   const [name, setName] = useState("");
@@ -30,87 +31,93 @@ function SignupForm() {
   // Detect if user is arriving from Google OAuth with ?step=complete
   const isGoogleCompletion = searchParams.get('step') === 'complete';
 
-  useEffect(() => {
-    if (isGoogleCompletion) {
-      // Pre-fill form fields from Google user data
-      getCurrentUser().then((user) => {
-        if (user) {
-          setEmail(user.email || '');
-          // Use the name from Google's metadata, the user can still edit it
-          setName(user.user_metadata?.full_name || user.user_metadata?.name || '');
+  const handleGoogleLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?type=signup`
         }
       });
+      
+      if (error) {
+        setError(error.message);
+      }
+    } catch (error) {
+      setError('An error occurred during Google sign up');
     }
-  }, [isGoogleCompletion]);
-  // made by mohamed
-
-  const handleGoogleLogin = async () => {
-    await logInWithGoogle();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    // made by mohamed
-    // If user arrived from Google OAuth, just update their profile metadata + set password
-    if (isGoogleCompletion) {
-      if (password !== confirmPassword) {
-        setError("Les mots de passe ne correspondent pas.");
-        return;
-      }
-      setLoading(true);
-      const res = await updateUserProfile({
-        name,
-        accountType,
-        specialty: accountType === 'doctor' ? specialty : undefined,
-        license: accountType === 'doctor' ? license : undefined,
-        password: password || undefined,
-      });
-      setLoading(false);
-
-      if (!res.success) {
-        setError(res.error || "Erreur lors de la mise à jour du profil.");
-      } else {
-        setSuccess(true);
-        if (accountType === 'doctor') {
-          router.push('/dashboardoctlarabi');
-        } else {
-          router.push('/dashboardpatientlarabi');
-        }
-      }
-      return;
-    }
-    // made by mohamed
-
     if (password !== confirmPassword) {
       setError("Les mots de passe ne correspondent pas.");
       return;
     }
-
+    
+    if (password.length < 8) {
+      setError("Le mot de passe doit contenir au moins 8 caractères.");
+      return;
+    }
+    
     setLoading(true);
-    const res = await signUpUser({
-      name,
-      email,
-      password,
-      passwordHash: "",
-      accountType,
-      specialty: accountType === 'doctor' ? specialty : undefined,
-      license: accountType === 'doctor' ? license : undefined,
-    });
-    setLoading(false);
+    
+    try {
+      // Sign up user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+            account_type: accountType,
+            specialty: accountType === 'doctor' ? specialty : null,
+            license: accountType === 'doctor' ? license : null,
+          }
+        }
+      });
 
-    if (!res.success) {
-      setError(res.error || "Une erreur est survenue lors de l'inscription.");
-    } else {
-      setSuccess(true);
-      // made by mohamed - redirection based on account type
-      if (accountType === 'doctor') {
-        router.push('/dashboardoctlarabi');
-      } else {
-        router.push('/dashboardpatientlarabi');
+      if (authError) {
+        setError(authError.message);
+        setLoading(false);
+        return;
       }
-      // made by mohamed
+
+      if (authData.user) {
+        // Create profile in profiles table
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: authData.user.id,
+            name,
+            email,
+            account_type: accountType,
+            specialty: accountType === 'doctor' ? specialty : null,
+            license: accountType === 'doctor' ? license : null,
+            created_at: new Date().toISOString()
+          });
+
+        if (profileError) {
+          setError('Account created but profile setup failed: ' + profileError.message);
+        } else {
+          setSuccess(true);
+          
+          // Redirect based on account type after a delay
+          setTimeout(() => {
+            if (accountType === 'doctor') {
+              router.push('/doctor-dashboard');
+            } else {
+              router.push('/dashboardpatientlarabi');
+            }
+          }, 1500);
+        }
+      }
+    } catch (error) {
+      setError('Une erreur est survenue lors de l\'inscription');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -119,7 +126,7 @@ function SignupForm() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <Link href="/" className="flex items-center justify-center mb-8">
-          <Logo size={150} />
+          <Logo width={200} height={80} />
         </Link>
 
         {/* Signup Card */}

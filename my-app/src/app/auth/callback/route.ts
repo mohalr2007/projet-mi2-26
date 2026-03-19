@@ -13,10 +13,20 @@ export async function GET(request: Request) {
         if (!error) {
             // Fetch the user to determine where to redirect
             const { data: { user } } = await supabase.auth.getUser()
-            const accountType = user?.user_metadata?.account_type
+            
+            // Check profiles table for account type
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('account_type')
+                .eq('id', user?.id || '')
+                .single()
+            
+            const accountType = profile?.account_type || user?.user_metadata?.account_type
+
+            console.log('User account type:', accountType); // Debug log
 
             if (accountType === 'doctor') {
-                return NextResponse.redirect(`${origin}/dashboardoctlarabi`)
+                return NextResponse.redirect(`${origin}/doctor-dashboard`)
             } else if (accountType === 'patient') {
                 return NextResponse.redirect(`${origin}/dashboardpatientlarabi`)
             } else {

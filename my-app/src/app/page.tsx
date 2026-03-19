@@ -3,11 +3,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "../components/Logo";
 import { AnimatedButton } from "../components/AnimatedButton";
-import { Bot, MapPin, Users, Shield, Zap, Heart, MessageSquare, Map, Users as UsersIcon, LogIn, Calendar } from "lucide-react";
-import { useEffect } from "react";
+import { Bot, MapPin, Users, Shield, Zap, Heart, MessageSquare, Map, Users as UsersIcon, LogIn, Calendar, User as UserIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { createClient } from "@/utils/supabase/client";
 
 function Navigation() {
   const pathname = usePathname();
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const supabase = createClient();
+
+  useEffect(() => {
+    async function getUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      setLoading(false);
+    }
+    getUser();
+  }, []);
 
   const isActive = (path: string) => pathname === path;
 
@@ -16,7 +29,7 @@ function Navigation() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16 px-8">
           <Link href="/" className="flex items-center py-2">
-            <Logo size={100} />
+            <Logo width={100} height={40} />
           </Link>
 
           <div className="hidden md:flex items-center gap-6">
@@ -67,19 +80,44 @@ function Navigation() {
           </div>
 
           <div className="flex items-center gap-4">
-            <Link
-              href="/login"
-              className="flex items-center gap-2 px-3 py-1.5 text-foreground/70 hover:text-foreground transition-colors text-sm"
-            >
-              <LogIn className="size-4" />
-              Login
-            </Link>
-            <AnimatedButton
-              href="/signup"
-              className="inline-flex items-center justify-center w-20 h-8 text-xs font-medium"
-            >
-              Sign Up
-            </AnimatedButton>
+            {loading ? (
+              <div className="text-sm text-gray-500">Loading...</div>
+            ) : user ? (
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/dashboardpatientlarabi"
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 transition-colors"
+                >
+                  <UserIcon className="size-4" />
+                  {user.user_metadata?.name || user.email?.split('@')[0] || "Dashboard"}
+                </Link>
+                <button
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    window.location.reload();
+                  }}
+                  className="text-sm text-red-500 hover:text-red-700 transition-colors"
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="flex items-center gap-2 px-3 py-1.5 text-foreground/70 hover:text-foreground transition-colors text-sm"
+                >
+                  <LogIn className="size-4" />
+                  Login
+                </Link>
+                <AnimatedButton
+                  href="/signup"
+                  className="inline-flex items-center justify-center w-20 h-8 text-xs font-medium"
+                >
+                  Sign Up
+                </AnimatedButton>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -267,7 +305,7 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center">
-              <Logo size={150} />
+              <Logo width={150} height={60} />
             </div>
             <p className="text-foreground/60">
               &copy; 2026 Mofid. Connecting patients with healthcare professionals.
