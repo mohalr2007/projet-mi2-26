@@ -1,19 +1,19 @@
 # Node dependencies - NEVER upload to GitHub
-my-app/node_modules/
+front/node_modules/
 node_modules/
 
 # Next.js build artifacts
-my-app/.next/
-my-app/out/
+front/.next/
+front/out/
 .next/
 
 # Environment variables - NEVER upload!
 .env
 .env.local
 .env*.local
-my-app/.env
-my-app/.env.local
-my-app/.env*.local
+front/.env
+front/.env.local
+front/.env*.local
 
 # OS files
 .DS_Store
