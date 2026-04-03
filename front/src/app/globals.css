@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Your custom styles here */
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --input-bg: #f8fafc;
+  --input-border: #cbd5e1;
+  --input-text: #0f172a;
+  --input-placeholder: #94a3b8;
+}
+
+.dark {
+  --background: #020617;
+  --foreground: #e2e8f0;
+  --input-bg: #0f172a;
+  --input-border: #334155;
+  --input-text: #e2e8f0;
+  --input-placeholder: #94a3b8;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Theme transition animation */
+.theme-animate,
+.theme-animate * {
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease, fill 150ms ease, stroke 150ms ease;
+}
+
+/* Utility for horizontal mobile nav scroll */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Keep native form controls readable in both themes */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+textarea,
+select {
+  background-color: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--input-text);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"])::placeholder,
+textarea::placeholder {
+  color: var(--input-placeholder);
+}
+
+.dark select option {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
