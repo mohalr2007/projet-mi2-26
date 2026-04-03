@@ -10,6 +10,8 @@ import { Mail, Lock, User, Stethoscope, AlertCircle, CheckCircle2, MapPin } from
 import { createClient } from "@/utils/supabase/client";
 import ThemeToggle from "../../components/ThemeToggle";
 
+export const dynamic = "force-dynamic";
+
 function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();

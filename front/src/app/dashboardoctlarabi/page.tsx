@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
+export const dynamic = "force-dynamic";
+
 type BookingSelectionMode = "patient_datetime" | "patient_date_only" | "doctor_datetime";
 
 type DoctorProfile = {
