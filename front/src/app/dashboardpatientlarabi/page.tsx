@@ -12,11 +12,11 @@ import {
   LogOut, Clock, CheckCircle, ChevronRight, Activity, Settings, Crosshair, RefreshCw, Upload, Heart, Bookmark, MessageCircle, Send, Flag
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import dynamic from 'next/dynamic';
+import dynamicImport from 'next/dynamic';
 
 export const dynamic = "force-dynamic";
 
-const MapComponent = dynamic(() => import('../../components/MapComponent'), {
+const MapComponent = dynamicImport(() => import('../../components/MapComponent'), {
   ssr: false,
   loading: () => <div className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-500 font-medium rounded-3xl">Chargement de la carte (OpenStreetMap gratuit)...</div>
 });
