@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Logo } from "../../components/Logo";
 import { AnimatedInput } from "../../components/AnimatedInput";
+import Stepper, { Step } from "../../components/Stepper";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, User, Stethoscope, AlertCircle, CheckCircle2, MapPin } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
@@ -33,6 +34,40 @@ function SignupForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+
+  const validateCurrentStep = (step: number) => {
+     if (step === 1) {
+       if (!accountType || !gender) {
+         setError("Veuillez sélectionner votre type de compte et votre sexe.");
+         return false;
+       }
+     }
+     if (step === 2) {
+        if (!password || password.length < 8) {
+           setError("Mot de passe invalide. Minimum 8 caractères.");
+           return false;
+        }
+        if (password !== confirmPassword) {
+           setError("Les mots de passe ne correspondent pas.");
+           return false;
+        }
+     }
+     if (step === 3) {
+        if (!latitude || !longitude) {
+           setError("Localisation requise. Cliquez sur 'Chercher Carte' ou 'GPS Automatique'.");
+           return false;
+        }
+     }
+     if (step === 4) {
+        if (accountType === 'doctor' && (!specialty || !license)) {
+            setError("Spécialité et Numéro d'Ordre requis pour les médecins.");
+            return false;
+        }
+     }
+     setError(null);
+     return true;
+  };
 
   // Detect if user is arriving from Google OAuth with ?step=complete
   const isGoogleCompletion = searchParams.get('step') === 'complete';
@@ -112,8 +147,8 @@ function SignupForm() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setError(null);
 
     if (password !== confirmPassword) {
@@ -286,37 +321,26 @@ function SignupForm() {
           </AnimatePresence>
 
           <form className="space-y-5" onSubmit={handleSubmit}>
-            {/* Full Name */}
-            <AnimatedInput
-              id="name"
-              type="text"
-              placeholder="Enter your full name"
-              label="Full Name"
-              icon={User}
-              iconDelay={0}
-              fieldDelay={0.1}
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
+            <div className="space-y-4 mb-2">
+              <AnimatedInput id="name" type="text" placeholder="Enter your full name" label="Full Name" icon={User} iconDelay={0} fieldDelay={0.1} required value={name} onChange={(e) => setName(e.target.value)} />
+              <AnimatedInput id="email" type="email" placeholder="Enter your email" label="Email" icon={Mail} iconDelay={0.2} fieldDelay={0.2} required value={email} onChange={(e) => setEmail(e.target.value)} disabled={isGoogleCompletion} />
+            </div>
 
-            {/* Email */}
-            <AnimatedInput
-              id="email"
-              type="email"
-              placeholder="Enter your email"
-              label="Email"
-              icon={Mail}
-              iconDelay={0.2}
-              fieldDelay={0.2}
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={isGoogleCompletion}
-            />
+            <Stepper
+              initialStep={1}
+              disableStepIndicators={true}
+              validateStep={validateCurrentStep}
+              onFinalStepCompleted={() => handleSubmit()}
+              backButtonText="Retour"
+              nextButtonText="Continuer"
+            >
+              <Step>
+                <div className="py-4 space-y-6">
+                  <h3 className="font-bold text-slate-800 dark:text-slate-200">Étape 1 : Informations de Profil</h3>
+
 
             {/* Gender Selection */}
-            <div>
+            <div className="mb-4">
               <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 ml-1 mb-1 block">Sexe / Genre</label>
               <div className="grid grid-cols-2 gap-3">
                 <button
@@ -336,8 +360,14 @@ function SignupForm() {
               </div>
             </div>
 
-            {/* Passwords */}
-            <div className="space-y-4">
+                </div>
+              </Step>
+              
+              <Step>
+                <div className="py-4 space-y-6">
+                  <h3 className="font-bold text-slate-800 dark:text-slate-200">Étape 2 : Sécurité du compte</h3>
+                  {/* Passwords */}
+                  <div className="space-y-4">
               <AnimatedInput
                 id="password"
                 type="password"
@@ -366,44 +396,14 @@ function SignupForm() {
               />
             </div>
 
+                </div>
+              </Step>
+              
+              <Step>
+                <div className="py-4 space-y-6">
+                  <h3 className="font-bold text-slate-800 dark:text-slate-200">Étape 3 : Localisation</h3>
             {/* Doctor-specific fields */}
-            {accountType === "doctor" && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-                <h3 className="font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 p-3 rounded-xl">👨‍⚕️ Informations Professionnelles</h3>
-                
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 ml-1">Spécialité Médicale</label>
-                  <select
-                    value={specialty}
-                    onChange={(e) => setSpecialty(e.target.value)}
-                    required
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 font-medium text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-                  >
-                    <option value="">Sélectionnez votre spécialité...</option>
-                    <option value="Cardiologue">Cardiologue</option>
-                    <option value="Dermatologue">Dermatologue</option>
-                    <option value="Généraliste">Généraliste</option>
-                    <option value="Ophtalmologue">Ophtalmologue</option>
-                    <option value="Pédiatre">Pédiatre</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 ml-1 mb-1 block">N° d&apos;identification (Ordre)</label>
-                  <div className="relative">
-                    <Stethoscope className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={18} />
-                    <input
-                      type="text"
-                      placeholder="Ex: 123456"
-                      value={license}
-                      onChange={(e) => setLicense(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-11 pr-4 py-3 text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500"
-                      required
-                    />
-                  </div>
-                </div>
-              </motion.div>
-            )}
+            
 
             {/* LOCATION FORM CONFIGURATION */}
             <div className={`mt-6 p-5 rounded-2xl relative overflow-hidden border ${accountType === 'doctor' ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/40' : 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900/40'}`}>
@@ -457,9 +457,41 @@ function SignupForm() {
                </div>
             </div>
             {/* END LOCATION */}
+                </div>
+              </Step>
+
+             {/* Doctor-specific fields wrapped inside Step 4 */}
+             {accountType === 'doctor' && (
+              <Step>
+                <div className="py-4 space-y-6">
+                  {/* Doctor Info */}
+                  <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <h3 className="font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 p-3 rounded-xl">👨‍⚕️ Informations Professionnelles</h3>
+                    
+                    <div className="space-y-1">
+                      <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 ml-1">Spécialité Médicale</label>
+                      <select value={specialty} onChange={(e) => setSpecialty(e.target.value)} required className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 font-medium text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 outline-none focus:ring-2 focus:ring-emerald-500 transition">
+                        <option value="">Sélectionnez votre spécialité...</option>
+                        <option value="Cardiologue">Cardiologue</option>
+                        <option value="Dermatologue">Dermatologue</option>
+                        <option value="Généraliste">Généraliste</option>
+                        <option value="Ophtalmologue">Ophtalmologue</option>
+                        <option value="Pédiatre">Pédiatre</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 ml-1 mb-1 block">N° d'identification (Ordre)</label>
+                      <input type="text" placeholder="Ex: 123456" value={license} onChange={(e) => setLicense(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500" required />
+                    </div>
+                  </div>
+                </div>
+              </Step>
+             )}
+            </Stepper>
 
             {/* Submit Button */}
-            <div className="pt-4">
+            <div className="pt-4 hidden">
               <button 
                 type="submit" 
                 disabled={loading}
@@ -482,7 +514,7 @@ function SignupForm() {
               <button 
                 type="button" 
                 onClick={handleGoogleLogin}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-3 hover:bg-slate-50 dark:hover:bg-neutral-800 transition shadow-sm hover:border-slate-300 dark:hover:border-neutral-600"
+                className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 font-bold py-4 px-4 rounded-xl flex items-center justify-center gap-3 hover:bg-white dark:hover:bg-slate-800 hover:shadow-md transition-all duration-300 tracking-wide text-[15px]"
               >
                 <svg className="size-5" viewBox="0 0 24 24">
                   <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />

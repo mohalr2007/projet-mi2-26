@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "../components/Logo";
 import { AnimatedButton } from "../components/AnimatedButton";
+import { motion } from "framer-motion";
 import { Bot, Users, Heart, MessageSquare, Map, LogIn, User as UserIcon, House, Minus, Maximize2, X, CalendarDays, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
@@ -175,9 +176,18 @@ function Navigation() {
         setAuthPending(false);
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!isMounted) {
-        return;
+      let session = null;
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) {
+          console.warn("Supabase auth error:", error.message);
+          if (error.message.includes("Refresh Token Not Found")) {
+            await supabase.auth.signOut();
+          }
+        }
+        session = data?.session ?? null;
+      } catch (e) {
+        console.error("Failed to get session:", e);
       }
 
       const sessionUser = session?.user ?? null;
@@ -264,7 +274,7 @@ function Navigation() {
     <>
     <nav className="border-b border-gray-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm sticky top-0 z-50 transition-colors duration-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16 px-8">
+        <div className="flex justify-between items-center h-16 lg:px-8">
           <Link href="/" className="flex items-center py-2">
             <Logo width={100} height={40} />
           </Link>
@@ -378,8 +388,8 @@ function Navigation() {
           </div>
         </div>
 
-        <div className="md:hidden px-2 pb-3">
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+        <div className="md:hidden py-3 border-t border-gray-100 dark:border-slate-800">
+          <div className="flex items-center gap-3 overflow-x-auto no-scrollbar px-1">
             <Link href="/" className={navButtonClasses("/")}>
               <House className="size-4" />
               Home
@@ -519,35 +529,35 @@ export default function Landing() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 dark:bg-none dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-white relative transition-colors duration-300 overflow-hidden">
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 mix-blend-overlay dark:opacity-5 pointer-events-none"></div>
-        <div className="absolute -top-24 -right-24 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl dark:bg-blue-900/10"></div>
-        <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl dark:bg-indigo-900/10"></div>
+        <motion.div animate={{ scale: [1, 1.2, 1], rotate: [0, 90, 0] }} transition={{ duration: 20, repeat: Infinity, ease: "linear" }} className="absolute -top-40 -right-40 w-[30rem] h-[30rem] bg-gradient-to-br from-blue-400/30 to-indigo-500/30 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-full blur-3xl"></motion.div>
+        <motion.div animate={{ scale: [1, 1.5, 1], rotate: [0, -90, 0] }} transition={{ duration: 25, repeat: Infinity, ease: "linear" }} className="absolute -bottom-40 -left-40 w-[35rem] h-[35rem] bg-gradient-to-tr from-cyan-400/20 to-blue-600/20 dark:from-cyan-900/10 dark:to-blue-900/10 rounded-full blur-3xl"></motion.div>
         
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 relative z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 relative z-10">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div className="space-y-8">
+            <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: "easeOut" }} className="space-y-8">
               <div className="inline-block px-4 py-2 bg-white/20 dark:bg-white/5 backdrop-blur-sm rounded-full text-sm font-medium border border-white/10 dark:border-white/5">
                 🏥 Trusted by 50,000+ Patients
               </div>
-              <h1 className="text-5xl lg:text-6xl font-bold leading-tight">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight">
                 Your Health, <br/><span className="text-blue-200 dark:text-blue-400">Our Priority</span>
               </h1>
-              <p className="text-xl text-blue-100 dark:text-slate-300 leading-relaxed">
+              <p className="text-lg sm:text-xl text-blue-100 dark:text-slate-300 leading-relaxed">
                 Connect with certified doctors, get instant AI-powered health assessments, 
                 and manage your healthcare journey all in one place.
               </p>
-              <div className="flex flex-wrap gap-4">
-                <AnimatedButton href="/ai-assistant" className="bg-white text-blue-600 dark:bg-blue-600 dark:text-white hover:bg-gray-100 dark:hover:bg-blue-700 border-none shadow-xl">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <AnimatedButton href="/ai-assistant" className="w-full sm:w-auto justify-center bg-white text-blue-600 dark:bg-blue-600 dark:text-white hover:bg-gray-100 dark:hover:bg-blue-700 border-none shadow-xl">
                   🤖 Check Symptoms
                 </AnimatedButton>
-                <AnimatedButton variant="secondary" href="/doctors" className="border-white text-white hover:bg-white/10 dark:border-slate-700 dark:hover:bg-slate-800">
+                <AnimatedButton variant="secondary" href="/doctors" className="w-full sm:w-auto justify-center border-white text-white hover:bg-white/10 dark:border-slate-700 dark:hover:bg-slate-800">
                   👨‍⚕️ Find Doctors
                 </AnimatedButton>
               </div>
-            </div>
+            </motion.div>
             
-            <div className="relative">
-              <div className="bg-white/10 dark:bg-slate-900/40 backdrop-blur-md rounded-3xl p-8 border border-white/20 dark:border-slate-800 shadow-2xl">
-                <div className="grid grid-cols-2 gap-6">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 1, delay: 0.2, ease: "easeOut" }} className="relative">
+              <div className="bg-white/10 dark:bg-slate-900/40 backdrop-blur-md rounded-3xl p-6 sm:p-8 border border-white/20 dark:border-slate-800 shadow-2xl">
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-4 sm:gap-6">
                   <div className="text-center p-6 bg-white/5 dark:bg-slate-800/20 rounded-2xl border border-white/5">
                     <div className="text-4xl font-bold">24/7</div>
                     <div className="text-blue-100 dark:text-slate-400 mt-1">Available</div>
@@ -566,7 +576,7 @@ export default function Landing() {
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
           </div>
         </div>
       </section>
@@ -574,15 +584,15 @@ export default function Landing() {
       {/* Services Section */}
       <section className="py-20 bg-gray-50 dark:bg-slate-950 transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">Complete Healthcare Solutions</h2>
-            <p className="text-xl text-gray-600 dark:text-slate-400 max-w-3xl mx-auto">
+          <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-50px" }} transition={{ duration: 0.6 }} className="text-center mb-12 sm:mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">Complete Healthcare Solutions</h2>
+            <p className="text-lg sm:text-xl text-gray-600 dark:text-slate-400 max-w-3xl mx-auto">
               From AI-powered symptom checking to booking appointments with specialists
             </p>
-          </div>
+          </motion.div>
           
           <div className="grid md:grid-cols-3 gap-8">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg p-8 hover:shadow-xl transition-all border border-gray-100 dark:border-slate-800 group">
+            <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-50px" }} transition={{ duration: 0.5, delay: 0.1 }} className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg p-8 hover:shadow-xl transition-all border border-gray-100 dark:border-slate-800 group">
               <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <Bot className="w-8 h-8 text-blue-600 dark:text-blue-400" />
               </div>
@@ -593,9 +603,9 @@ export default function Landing() {
               <AnimatedButton href="/ai-assistant" variant="secondary" className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white">
                 Try Now →
               </AnimatedButton>
-            </div>
+            </motion.div>
             
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg p-8 hover:shadow-xl transition-all border border-gray-100 dark:border-slate-800 group">
+            <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-50px" }} transition={{ duration: 0.5, delay: 0.2 }} className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg p-8 hover:shadow-xl transition-all border border-gray-100 dark:border-slate-800 group">
               <div className="w-16 h-16 bg-green-100 dark:bg-emerald-900/30 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <Users className="w-8 h-8 text-green-600 dark:text-emerald-400" />
               </div>
@@ -606,9 +616,9 @@ export default function Landing() {
               <AnimatedButton href="/doctors" variant="secondary" className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white">
                 Browse Doctors →
               </AnimatedButton>
-            </div>
+            </motion.div>
             
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg p-8 hover:shadow-xl transition-all border border-gray-100 dark:border-slate-800 group">
+            <motion.div initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-50px" }} transition={{ duration: 0.5, delay: 0.3 }} className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg p-8 hover:shadow-xl transition-all border border-gray-100 dark:border-slate-800 group">
               <div className="w-16 h-16 bg-purple-100 dark:bg-purple-900/30 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <Heart className="w-8 h-8 text-purple-600 dark:text-purple-400" />
               </div>
@@ -619,7 +629,7 @@ export default function Landing() {
               <AnimatedButton variant="secondary" className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white">
                 Learn More →
               </AnimatedButton>
-            </div>
+            </motion.div>
           </div>
         </div>
       </section>
@@ -627,63 +637,63 @@ export default function Landing() {
       {/* How It Works */}
       <section className="py-20 bg-white dark:bg-slate-950 transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">How Mofid Works</h2>
-            <p className="text-xl text-gray-600 dark:text-slate-400">Simple steps to better healthcare</p>
-          </div>
+          <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-50px" }} transition={{ duration: 0.6 }} className="text-center mb-12 sm:mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">How Mofid Works</h2>
+            <p className="text-lg sm:text-xl text-gray-600 dark:text-slate-400">Simple steps to better healthcare</p>
+          </motion.div>
           
-          <div className="grid md:grid-cols-4 gap-8">
-            <div className="text-center group">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true, margin: "-50px" }} transition={{ duration: 0.4, delay: 0.1 }} className="text-center group">
               <div className="w-16 h-16 bg-blue-600 dark:bg-blue-900/50 dark:border dark:border-blue-800 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4 group-hover:bg-blue-500 transition-colors">
                 1
               </div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Describe Symptoms</h3>
               <p className="text-gray-600 dark:text-slate-400">Tell our AI about your health concerns</p>
-            </div>
+            </motion.div>
             
-            <div className="text-center group">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true, margin: "-50px" }} transition={{ duration: 0.4, delay: 0.2 }} className="text-center group">
               <div className="w-16 h-16 bg-blue-600 dark:bg-blue-900/50 dark:border dark:border-blue-800 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4 group-hover:bg-blue-500 transition-colors">
                 2
               </div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Get Assessment</h3>
               <p className="text-gray-600 dark:text-slate-400">Receive instant AI-powered analysis</p>
-            </div>
+            </motion.div>
             
-            <div className="text-center group">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true, margin: "-50px" }} transition={{ duration: 0.4, delay: 0.3 }} className="text-center group">
               <div className="w-16 h-16 bg-blue-600 dark:bg-blue-900/50 dark:border dark:border-blue-800 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4 group-hover:bg-blue-500 transition-colors">
                 3
               </div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Find Doctor</h3>
               <p className="text-gray-600 dark:text-slate-400">Connect with the right specialist</p>
-            </div>
+            </motion.div>
             
-            <div className="text-center group">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true, margin: "-50px" }} transition={{ duration: 0.4, delay: 0.4 }} className="text-center group">
               <div className="w-16 h-16 bg-blue-600 dark:bg-blue-900/50 dark:border dark:border-blue-800 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4 group-hover:bg-blue-500 transition-colors">
                 4
               </div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Get Treatment</h3>
               <p className="text-gray-600 dark:text-slate-400">Start your journey to better health</p>
-            </div>
+            </motion.div>
           </div>
         </div>
       </section>
       
       {/* CTA Section */}
-      <section className="bg-gradient-to-r from-blue-600 to-indigo-700 dark:bg-none dark:bg-slate-900 py-20 border-t border-transparent dark:border-slate-800 transition-colors duration-300">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl font-bold text-white mb-6">Ready to Take Control of Your Health?</h2>
-          <p className="text-xl text-blue-100 dark:text-slate-300 mb-8">
+      <section className="bg-gradient-to-r from-blue-600 to-indigo-700 dark:bg-none dark:bg-slate-900 py-16 sm:py-20 border-t border-transparent dark:border-slate-800 transition-colors duration-300">
+        <motion.div initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-50px" }} transition={{ duration: 0.7 }} className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">Ready to Take Control of Your Health?</h2>
+          <p className="text-lg sm:text-xl text-blue-100 dark:text-slate-300 mb-8">
             Join thousands of patients who trust Mofid for their healthcare needs
           </p>
-          <div className="flex flex-wrap gap-4 justify-center">
-            <AnimatedButton href="/signup" className="bg-white text-blue-600 hover:bg-gray-100 dark:bg-blue-600 dark:text-white dark:hover:bg-blue-700 border-none shadow-xl px-8 py-4 text-lg">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <AnimatedButton href="/signup" className="w-full sm:w-auto justify-center bg-white text-blue-600 hover:bg-gray-100 dark:bg-blue-600 dark:text-white dark:hover:bg-blue-700 border-none shadow-xl px-8 py-4 text-lg">
               Get Started Free
             </AnimatedButton>
-            <AnimatedButton variant="secondary" href="/ai-assistant" className="border-white text-white hover:bg-white/10 dark:border-slate-700 dark:hover:bg-slate-800 px-8 py-4 text-lg">
+            <AnimatedButton variant="secondary" href="/ai-assistant" className="w-full sm:w-auto justify-center border-white text-white hover:bg-white/10 dark:border-slate-700 dark:hover:bg-slate-800 px-8 py-4 text-lg">
               Try AI Assistant
             </AnimatedButton>
           </div>
-        </div>
+        </motion.div>
       </section>
       
       {/* Footer */}

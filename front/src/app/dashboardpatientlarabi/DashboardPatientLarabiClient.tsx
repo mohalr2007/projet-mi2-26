@@ -238,7 +238,7 @@ export default function PatientDashboard() {
   const [selectedSpecialty, setSelectedSpecialty] = useState("");
   const [minimumRating, setMinimumRating] = useState(0);
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
-  const searchRadius = 25;
+  const [searchRadius, setSearchRadius] = useState(50);
 
   // Booking Modal
   const [selectedDoctorToBook, setSelectedDoctorToBook] = useState<DoctorSummary | null>(null);
@@ -362,8 +362,26 @@ export default function PatientDashboard() {
 
     async function loadData() {
       const startedAt = performance.now();
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      let user = null;
+      let authError = null;
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        user = data.session?.user ?? null;
+        authError = error;
+      } catch (err: any) {
+        console.warn("Supabase auth session lock stolen/error, retrying:", err.message);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        try {
+          const { data } = await supabase.auth.getSession();
+          user = data.session?.user ?? null;
+        } catch (retryErr) {
+          console.error("Supabase auth retry failed:", retryErr);
+        }
+      }
       if (authError || !user) {
+        if (authError?.message?.includes("Refresh Token Not Found")) {
+          await supabase.auth.signOut();
+        }
         router.replace("/login");
         return;
       }
@@ -630,12 +648,7 @@ export default function PatientDashboard() {
               await supabase.from('profiles').update({ latitude: lat, longitude: lng }).eq('id', profile.id);
           }
           
-          // Recharger les medecins proches
-          const docs = await fetchDoctors(lat, lng, searchRadius);
-          const ratingsMap = await fetchDoctorRatings(docs.map((doctor) => doctor.id));
-          setDoctors(docs);
-          setDoctorRatings(ratingsMap);
-          alert("Position mise à jour ! Liste des médecins réactualisée.");
+          alert("Position enregistrée, la carte va se mettre à jour automatiquement.");
        }, () => {
           alert("Erreur de localisation. Activez le GPS et autorisez le navigateur.");
        });
@@ -643,6 +656,20 @@ export default function PatientDashboard() {
       alert("Géolocalisation non supportée par votre navigateur.");
     }
   };
+
+  useEffect(() => {
+    let isMounted = true;
+    if (userLocation) {
+      void fetchDoctors(userLocation.lat, userLocation.lng, searchRadius).then(async (docs) => {
+         if (!isMounted) return;
+         const ratingsMap = await fetchDoctorRatings(docs.map((doctor) => doctor.id));
+         if (!isMounted) return;
+         setDoctors(docs);
+         setDoctorRatings(ratingsMap);
+      });
+    }
+    return () => { isMounted = false; };
+  }, [searchRadius, userLocation?.lat, userLocation?.lng]);
 
   const handleSignOut = async () => {
     if (profile?.id) {
@@ -1482,24 +1509,24 @@ export default function PatientDashboard() {
       
       {/* Sidebar Content */}
       {!isEmbedded ? (
-      <aside className="w-full md:w-72 bg-white dark:bg-slate-950 border-r border-gray-200 dark:border-slate-800 shadow-sm flex flex-col z-10 sticky top-0 h-screen transition-colors duration-200">
-        <div className="p-6 pb-8 border-b border-gray-100 dark:border-slate-800">
+      <aside className="w-full md:w-72 bg-white dark:bg-slate-950 border-r border-gray-200 dark:border-slate-800 shadow-sm flex flex-col z-10 md:sticky top-0 md:h-screen transition-colors duration-200">
+        <div className="p-4 md:p-6 md:pb-8 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center">
           <Link href="/"><Logo width={120} /></Link>
         </div>
-        <div className="p-6 flex flex-col gap-2 flex-grow overflow-y-auto">
-          <button onClick={() => setActiveTab("overview")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === "overview" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800"}`}>
+        <div className="p-4 md:p-6 flex flex-row md:flex-col gap-2 flex-grow overflow-x-auto md:overflow-y-auto no-scrollbar">
+          <button onClick={() => setActiveTab("overview")} className={`flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl whitespace-nowrap flex-shrink-0 transition-all ${activeTab === "overview" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800"}`}>
             <Activity size={20} /> Vue d&apos;ensemble
           </button>
-          <button onClick={() => setActiveTab("search")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === "search" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800"}`}>
+          <button onClick={() => setActiveTab("search")} className={`flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl whitespace-nowrap flex-shrink-0 transition-all ${activeTab === "search" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800"}`}>
             <Search size={20} /> Trouver un Médecin
           </button>
-          <button onClick={() => setActiveTab("appointments")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === "appointments" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800"}`}>
+          <button onClick={() => setActiveTab("appointments")} className={`flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl whitespace-nowrap flex-shrink-0 transition-all ${activeTab === "appointments" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800"}`}>
             <Calendar size={20} /> Mes Rendez-vous
           </button>
-          <button onClick={() => setActiveTab("community")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === "community" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800"}`}>
+          <button onClick={() => setActiveTab("community")} className={`flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl whitespace-nowrap flex-shrink-0 transition-all ${activeTab === "community" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800"}`}>
             <FileText size={20} /> Communauté
           </button>
-          <button onClick={() => setActiveTab("settings")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === "settings" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800"}`}>
+          <button onClick={() => setActiveTab("settings")} className={`flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl whitespace-nowrap flex-shrink-0 transition-all ${activeTab === "settings" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800"}`}>
             <Settings size={20} /> Paramètres
           </button>
         </div>
@@ -1580,7 +1607,7 @@ export default function PatientDashboard() {
                  </button>
                </div>
                
-               <div className="bg-white dark:bg-slate-950 p-4 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-800 mb-6 grid gap-4 md:grid-cols-3">
+               <div className="bg-white dark:bg-slate-950 p-4 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-800 mb-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
                   <div className="flex-1 relative">
                     <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
                     <input 
@@ -1616,6 +1643,21 @@ export default function PatientDashboard() {
                       <option value={4}>Note min: 4.0+</option>
                       <option value={4.5}>Note min: 4.5+</option>
                     </select>
+                  </div>
+                  <div className="flex flex-col justify-center px-1">
+                    <label className="text-xs font-semibold text-gray-500 mb-2 flex justify-between">
+                       <span>Rayon de recherche</span>
+                       <span className="text-blue-600 dark:text-blue-400 font-bold">{searchRadius} km</span>
+                    </label>
+                    <input 
+                       type="range" 
+                       min={5} 
+                       max={500} 
+                       step={5} 
+                       value={searchRadius} 
+                       onChange={(e) => setSearchRadius(Number(e.target.value))} 
+                       className="w-full h-2 bg-gray-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    />
                   </div>
                </div>
 
@@ -1797,7 +1839,7 @@ export default function PatientDashboard() {
                     <div className="py-12 text-center text-gray-400">Aucune publication pour le moment.</div>
                  ) : (
                    articles.map((article) => (
-                     <article key={article.id} className="bg-white dark:bg-slate-950 p-6 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm">
+                     <article key={article.id} className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md p-6 lg:p-8 rounded-3xl border border-slate-100/50 dark:border-slate-800/50 shadow-xl shadow-blue-900/5 hover:shadow-blue-900/10 transition-all duration-300">
                        <div className="flex items-center gap-3 mb-4">
                          {article.author?.avatar_url ? (
                            <img
@@ -1851,7 +1893,7 @@ export default function PatientDashboard() {
                          <div className="flex items-center gap-3 text-sm">
                            <button
                              onClick={() => void toggleLikePost(article.id)}
-                             className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border transition ${
+                             className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border transition-all duration-300 font-medium shadow-sm hover:shadow-md hover:-translate-y-0.5 ${
                                article.liked_by_me
                                  ? "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
                                  : "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
@@ -1862,7 +1904,7 @@ export default function PatientDashboard() {
                            </button>
                            <button
                              onClick={() => void toggleSavePost(article.id)}
-                             className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border transition ${
+                             className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border transition-all duration-300 font-medium shadow-sm hover:shadow-md hover:-translate-y-0.5 ${
                                article.saved_by_me
                                  ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
                                  : "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"

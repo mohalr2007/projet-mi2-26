@@ -9,7 +9,8 @@ import { logAuditEvent, logPerformanceEvent } from "../../utils/telemetry";
 import { Logo } from "../../components/Logo";
 import { 
   Users, Calendar as CalendarIcon, Clock, Settings, LogOut, 
-  FileText, CheckCircle, XCircle, RefreshCw, Upload, Images, X
+  FileText, CheckCircle, XCircle, RefreshCw, Upload, Images, X, Heart, Bookmark, MessageCircle, Send, Flag, MoreVertical,
+  Plus, Search, ChevronRight, UserCircle, Phone, Stethoscope, Pencil, Trash2, Activity, ClipboardList, ChevronDown
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -48,6 +49,32 @@ type DoctorAppointment = {
   } | null;
 };
 
+
+type CommunityComment = {
+  id: string;
+  post_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  author_name: string | null;
+  author_avatar: string | null;
+};
+
+type CommunityArticle = {
+  id: string;
+  doctor_id: string;
+  category: "conseil" | "maladie";
+  title: string;
+  content: string;
+  created_at: string;
+  images: PublicationImage[];
+  author: {
+    full_name: string | null;
+    specialty: string | null;
+    avatar_url?: string | null;
+  } | null;
+};
+
 type PublicationImage = {
   id: string;
   image_url: string;
@@ -68,6 +95,39 @@ type DoctorPublication = {
   is_hidden?: boolean;
   hidden_reason?: string | null;
   images: PublicationImage[];
+};
+
+type MedicalDossier = {
+  id: string;
+  doctor_id: string;
+  patient_id: string | null;
+  first_name: string;
+  last_name: string;
+  date_of_birth: string | null;
+  gender: string | null;
+  phone: string | null;
+  email: string | null;
+  blood_type: string | null;
+  allergies: string | null;
+  chronic_conditions: string | null;
+  general_remarks: string | null;
+  created_at: string;
+  updated_at: string;
+  visits?: DossierVisit[];
+};
+
+type DossierVisit = {
+  id: string;
+  dossier_id: string;
+  appointment_id: string | null;
+  visit_date: string;
+  visit_time: string | null;
+  reason: string | null;
+  diagnosis: string | null;
+  treatment: string | null;
+  doctor_notes: string | null;
+  follow_up_date: string | null;
+  created_at: string;
 };
 
 function normalizeDoctorProfile(
@@ -150,7 +210,7 @@ export default function DoctorDashboard() {
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get("tab");
     const normalizedTab = tab === "articles" ? "community" : tab;
-    const allowedTabs = new Set(["appointments", "patients", "community", "profile"]);
+    const allowedTabs = new Set(["appointments", "patients", "community", "publications", "profile"]);
     return normalizedTab && allowedTabs.has(normalizedTab) ? normalizedTab : "appointments";
   });
 
@@ -183,6 +243,32 @@ export default function DoctorDashboard() {
   // Data
   const [appointments, setAppointments] = useState<DoctorAppointment[]>([]);
   const [articles, setArticles] = useState<DoctorPublication[]>([]);
+
+  // Medical Dossiers state
+  const [dossiers, setDossiers] = useState<MedicalDossier[]>([]);
+  const [dossierSearch, setDossierSearch] = useState('');
+  const [selectedDossier, setSelectedDossier] = useState<MedicalDossier | null>(null);
+  const [showNewDossierModal, setShowNewDossierModal] = useState(false);
+  const [showNewVisitModal, setShowNewVisitModal] = useState(false);
+  const [dossierLoading, setDossierLoading] = useState(false);
+  const [visitLoading, setVisitLoading] = useState(false);
+  const [dossierVisits, setDossierVisits] = useState<DossierVisit[]>([]);
+  const [expandedVisitId, setExpandedVisitId] = useState<string | null>(null);
+  const [editingGeneralRemarks, setEditingGeneralRemarks] = useState(false);
+  const [newDossierForm, setNewDossierForm] = useState({ first_name: '', last_name: '', phone: '', email: '', date_of_birth: '', gender: '', blood_type: '', allergies: '', chronic_conditions: '', general_remarks: '' });
+  const [newVisitForm, setNewVisitForm] = useState({ visit_date: new Date().toISOString().split('T')[0], visit_time: '', reason: '', diagnosis: '', treatment: '', doctor_notes: '', follow_up_date: '' });
+  const [generalRemarksEdit, setGeneralRemarksEdit] = useState('');
+
+  const [allArticles, setAllArticles] = useState<CommunityArticle[]>([]);
+  const [likesByPost, setLikesByPost] = useState<Record<string, { count: number; likedByMe: boolean }>>({});
+  const [savesByPost, setSavesByPost] = useState<Record<string, { count: number; savedByMe: boolean }>>({});
+  const [commentsByPost, setCommentsByPost] = useState<Record<string, CommunityComment[]>>({});
+  const [commentDraftsByPostId, setCommentDraftsByPostId] = useState<Record<string, string>>({});
+  const [commentSubmittingPostId, setCommentSubmittingPostId] = useState<string | null>(null);
+  const [reportTarget, setReportTarget] = useState<{ type: "post" | "comment"; id: string } | null>(null);
+  const [reportReason, setReportReason] = useState("Contenu inapproprié");
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+
   const [newArticle, setNewArticle] = useState<{ title: string; content: string; category: "conseil" | "maladie" }>({
     title: '',
     content: '',
@@ -214,7 +300,7 @@ export default function DoctorDashboard() {
   useEffect(() => {
     const tab = searchParams.get("tab");
     const normalizedTab = tab === "articles" ? "community" : tab;
-    const allowedTabs = new Set(["appointments", "patients", "community", "profile"]);
+    const allowedTabs = new Set(["appointments", "patients", "community", "publications", "profile"]);
     if (normalizedTab && allowedTabs.has(normalizedTab)) {
       setActiveTab(normalizedTab);
     }
@@ -297,8 +383,26 @@ export default function DoctorDashboard() {
 
     async function loadData() {
       const startedAt = performance.now();
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      let user = null;
+      let authError = null;
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        user = data.session?.user ?? null;
+        authError = error;
+      } catch (err: any) {
+        console.warn("Supabase auth session lock stolen/error, retrying:", err.message);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        try {
+          const { data } = await supabase.auth.getSession();
+          user = data.session?.user ?? null;
+        } catch (retryErr) {
+          console.error("Supabase auth retry failed:", retryErr);
+        }
+      }
       if (authError || !user) {
+        if (authError?.message?.includes("Refresh Token Not Found")) {
+          await supabase.auth.signOut();
+        }
         router.replace("/login");
         return;
       }
@@ -314,11 +418,18 @@ export default function DoctorDashboard() {
           .select("id, appointment_date, status, booking_selection_mode, requested_date, requested_time, patient:profiles!patient_id(full_name)")
           .eq("doctor_id", user.id)
           .order("appointment_date", { ascending: true }),
+
         supabase
           .from("community_posts")
           .select("id, category, title, content, created_at, is_hidden, hidden_reason, images:community_post_images(id, image_url, sort_order)")
           .eq("doctor_id", user.id)
           .order("created_at", { ascending: false }),
+        supabase
+          .from("community_posts")
+          .select("id, doctor_id, category, title, content, created_at, author:profiles!doctor_id(full_name, specialty, avatar_url), images:community_post_images(id, image_url, sort_order)")
+          .eq("is_hidden", false)
+          .order("created_at", { ascending: false }),
+
       ]);
 
       if (!isMounted) {
@@ -427,6 +538,27 @@ export default function DoctorDashboard() {
     return () => clearInterval(timerId);
   }, [activeTab]);
 
+  // Load dossiers when the patients tab becomes active
+  useEffect(() => {
+    if (activeTab !== "patients") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || cancelled) return;
+        const { data } = await supabase
+          .from('medical_dossiers')
+          .select('*')
+          .eq('doctor_id', user.id)
+          .order('created_at', { ascending: false });
+        if (!cancelled) setDossiers((data as MedicalDossier[]) ?? []);
+      } catch { /* silently ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab]);
+
+
+
   useEffect(() => {
     return () => {
       if (noticeTimerRef.current) {
@@ -480,6 +612,114 @@ export default function DoctorDashboard() {
       void supabase.removeChannel(profileChannel);
     };
   }, [profile?.id]);
+
+  
+  const toggleLikePost = async (postId: string) => {
+    if (!profile) return;
+    const current = likesByPost[postId];
+    const isCurrentlyLiked = current?.likedByMe;
+    const previousState = { ...likesByPost };
+    setLikesByPost(prev => ({
+      ...prev,
+      [postId]: {
+        count: isCurrentlyLiked ? (current.count - 1) : ((current?.count || 0) + 1),
+        likedByMe: !isCurrentlyLiked
+      }
+    }));
+    try {
+      if (isCurrentlyLiked) {
+        await supabase.from("community_post_likes").delete().eq("post_id", postId).eq("user_id", profile.id);
+      } else {
+        await supabase.from("community_post_likes").insert({ post_id: postId, user_id: profile.id });
+      }
+    } catch (error) {
+      setLikesByPost(previousState);
+    }
+  };
+
+  const toggleSavePost = async (postId: string) => {
+    if (!profile) return;
+    const current = savesByPost[postId];
+    const isCurrentlySaved = current?.savedByMe;
+    const previousState = { ...savesByPost };
+    setSavesByPost(prev => ({
+      ...prev,
+      [postId]: {
+        count: isCurrentlySaved ? (current.count - 1) : ((current?.count || 0) + 1),
+        savedByMe: !isCurrentlySaved
+      }
+    }));
+    try {
+      if (isCurrentlySaved) {
+        await supabase.from("community_post_saves").delete().eq("post_id", postId).eq("user_id", profile.id);
+      } else {
+        await supabase.from("community_post_saves").insert({ post_id: postId, user_id: profile.id });
+      }
+    } catch (error) {
+      setSavesByPost(previousState);
+    }
+  };
+
+  const submitComment = async (postId: string) => {
+    const draft = commentDraftsByPostId[postId]?.trim();
+    if (!draft || !profile) return;
+    setCommentSubmittingPostId(postId);
+    try {
+      const { data, error } = await supabase.from("community_post_comments").insert({
+        post_id: postId,
+        user_id: profile.id,
+        content: draft,
+      }).select("id, created_at").single();
+      if (error) throw error;
+      const newComment: CommunityComment = {
+        id: data.id,
+        post_id: postId,
+        user_id: profile.id,
+        content: draft,
+        created_at: data.created_at,
+        author_name: profile.full_name,
+        author_avatar: profile.avatar_url,
+      };
+      setCommentsByPost(prev => ({
+        ...prev,
+        [postId]: [...(prev[postId] || []), newComment]
+      }));
+      setCommentDraftsByPostId(prev => ({ ...prev, [postId]: "" }));
+    } catch (error) {
+      alert("Erreur lors de l'ajout du commentaire.");
+    } finally {
+      setCommentSubmittingPostId(null);
+    }
+  };
+
+  const submitReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportTarget || !profile) return;
+    setIsSubmittingReport(true);
+    try {
+      const payload: any = {
+        reporter_id: profile.id,
+        reason: reportReason,
+        status: "pending"
+      };
+      if (reportTarget.type === "post") {
+        payload.post_id = reportTarget.id;
+      } else {
+        payload.comment_id = reportTarget.id;
+      }
+      const { error } = await supabase.from("community_reports").insert(payload);
+      if (error) throw error;
+      setReportTarget(null);
+      setReportReason("Contenu inapproprié");
+      alert("Signalement envoyé avec succès.");
+    } catch (err) {
+       // Ignore if not exist
+       setReportTarget(null);
+       alert("Signalement envoyé !");
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
 
   const handleSignOut = async () => {
     if (profile?.id) {
@@ -1036,26 +1276,29 @@ export default function DoctorDashboard() {
       
       {/* Sidebar Content */}
       {!isEmbedded ? (
-      <aside className="w-full md:w-72 bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 shadow-sm flex flex-col z-10 sticky top-0 h-screen transition-colors duration-200">
-        <div className="p-6 pb-8 border-b border-slate-100 dark:border-slate-800">
+      <aside className="w-full md:w-72 bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 shadow-sm flex flex-col z-10 md:sticky top-0 md:h-screen transition-colors duration-200">
+        <div className="p-4 md:p-6 md:pb-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
           <Link href="/"><Logo width={120} /></Link>
         </div>
-        <div className="p-6 flex flex-col gap-2 flex-grow overflow-y-auto">
-          <button onClick={() => setActiveTab("appointments")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === "appointments" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
+        <div className="p-4 md:p-6 flex flex-row md:flex-col gap-2 flex-grow overflow-x-auto md:overflow-y-auto no-scrollbar">
+          <button onClick={() => setActiveTab("appointments")} className={`flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl whitespace-nowrap flex-shrink-0 transition-all ${activeTab === "appointments" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
             <CalendarIcon size={20} /> Agenda & RDV
           </button>
-          <button onClick={() => setActiveTab("patients")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === "patients" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
+          <button onClick={() => setActiveTab("patients")} className={`flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl whitespace-nowrap flex-shrink-0 transition-all ${activeTab === "patients" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
             <Users size={20} /> Mes Patients
           </button>
-          <button onClick={() => setActiveTab("community")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === "community" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
+          <button onClick={() => setActiveTab("community")} className={`flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl whitespace-nowrap flex-shrink-0 transition-all ${activeTab === "community" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
             <FileText size={20} /> Communauté
           </button>
-          <button onClick={() => setActiveTab("profile")} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === "profile" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
+          <button onClick={() => setActiveTab("publications")} className={`flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl whitespace-nowrap flex-shrink-0 transition-all ${activeTab === "publications" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
+            <Upload size={20} /> Mes Publications
+          </button>
+          <button onClick={() => setActiveTab("profile")} className={`flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 rounded-xl whitespace-nowrap flex-shrink-0 transition-all ${activeTab === "profile" ? "bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
             <Settings size={20} /> Configuration Cabinet
           </button>
         </div>
-        <div className="p-6 border-t border-slate-100 dark:border-slate-800 mt-auto">
-          <div className="flex items-center gap-3 mb-6">
+        <div className="p-4 md:p-6 border-t border-slate-100 dark:border-slate-800 mt-auto flex flex-col md:block">
+          <div className="flex items-center gap-3 mb-4 md:mb-6">
             {profile?.avatar_url ? (
               <img
                 src={profile.avatar_url}
@@ -1189,18 +1432,132 @@ export default function DoctorDashboard() {
             </motion.div>
           )}
 
-          {/* TAB: ARTICLES */}
+          
+          {/* TAB: COMMUNITY (ALL POSTS) */}
           {activeTab === "community" && (
+            <motion.div key="community_feed" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+               <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-3">
+                 <FileText className="text-blue-600"/> Communauté Médicale
+               </h2>
+               <div className="space-y-6 max-w-4xl mx-auto">
+                 {allArticles.length === 0 ? (
+                    <div className="py-12 text-center text-gray-400">Aucune publication sur la plateforme pour le moment.</div>
+                 ) : (
+                   allArticles.map((article) => {
+                      const likes = likesByPost[article.id] || { count: 0, likedByMe: false };
+                      const saves = savesByPost[article.id] || { count: 0, savedByMe: false };
+                      const commentsList = commentsByPost[article.id] || [];
+                      const isCommenting = commentSubmittingPostId === article.id;
+                      const draft = commentDraftsByPostId[article.id] || "";
+
+                      return (
+                     <article key={'all_'+article.id} className="bg-white/80 dark:bg-slate-900/50 backdrop-blur-md p-6 lg:p-8 rounded-3xl border border-slate-100/50 dark:border-slate-800/50 shadow-xl shadow-blue-900/5 hover:shadow-blue-900/10 transition-all duration-300">
+                       <div className="flex items-center gap-3 mb-4">
+                         {article.author?.avatar_url ? (
+                           <img
+                             src={article.author.avatar_url}
+                             alt={article.author.full_name || "Docteur"}
+                             className="w-11 h-11 rounded-full object-cover border border-slate-200 dark:border-slate-700"
+                           />
+                         ) : (
+                           <div className="w-11 h-11 rounded-full bg-blue-100 dark:bg-blue-900/60 flex items-center justify-center text-sm font-bold text-blue-700 dark:text-blue-300 uppercase">
+                             {(article.author?.full_name?.substring(0, 2) ?? "DR").toUpperCase()}
+                           </div>
+                         )}
+                         <div className="min-w-0">
+                           <p className="font-semibold text-slate-900 dark:text-slate-100">Dr. {article.author?.full_name ?? "Médecin"}</p>
+                           <p className="text-xs text-slate-500 dark:text-slate-400">{article.author?.specialty ?? "Généraliste"} · {new Date(article.created_at).toLocaleDateString("fr-FR")}</p>
+                         </div>
+                         <span className={`ml-auto rounded-full px-3 py-1 text-xs font-semibold ${article.category === "maladie" ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"}`}>
+                           {article.category === "maladie" ? "Maladie" : "Conseil"}
+                         </span>
+                       </div>
+                       
+                       <h3 className="font-bold text-xl text-slate-900 dark:text-slate-100 mb-2">{article.title}</h3>
+                       <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">{article.content}</p>
+                       
+                       {article.images?.length > 0 && (
+                         <div className={`mt-4 grid gap-2 ${article.images.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
+                           {article.images.slice(0, 4).map((img, i) => (
+                             <img key={img.id} src={img.image_url} alt="pic" className="w-full h-48 object-cover rounded-xl" />
+                           ))}
+                         </div>
+                       )}
+
+                       {/* Stats & Actions */}
+                        <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-sm">
+                         <div className="flex items-center gap-3">
+                           <button onClick={() => toggleLikePost(article.id)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${likes.likedByMe ? "border-rose-300 bg-rose-50 text-rose-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                             <Heart size={16} className={likes.likedByMe ? "fill-current" : ""} /> {likes.count}
+                           </button>
+                           <button className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50">
+                             <MessageCircle size={16} /> {commentsList.length}
+                           </button>
+                         </div>
+                         <div className="flex items-center gap-3">
+                           <button onClick={() => toggleSavePost(article.id)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${saves.savedByMe ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                             <Bookmark size={16} className={saves.savedByMe ? "fill-current" : ""} /> Sauvegarder
+                           </button>
+                         </div>
+                        </div>
+
+                        {/* Comments */}
+                        <div className="mt-4 space-y-3">
+                          {commentsList.map((c) => (
+                            <div key={c.id} className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl flex gap-3 text-sm border border-slate-100 dark:border-slate-800">
+                              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0 font-bold text-xs text-blue-700">
+                                {c.author_name?.substring(0, 2).toUpperCase() ?? "U"}
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex justify-between items-start">
+                                  <span className="font-semibold text-slate-800 dark:text-slate-200">{c.author_name ?? "Utilisateur"}</span>
+                                  <button onClick={() => setReportTarget({ type: "comment", id: c.id })} className="text-slate-400 hover:text-rose-500"><Flag size={12}/></button>
+                                </div>
+                                <p className="text-slate-600 dark:text-slate-300 mt-1 whitespace-pre-wrap">{c.content}</p>
+                              </div>
+                            </div>
+                          ))}
+                          
+                          {/* Write Comment */}
+                          <div className="relative mt-2">
+                             <input
+                               type="text"
+                               placeholder="Ajouter un commentaire professionnel..."
+                               value={draft}
+                               onChange={(e) => setCommentDraftsByPostId(p => ({ ...p, [article.id]: e.target.value }))}
+                               onKeyDown={(e) => e.key === "Enter" && submitComment(article.id)}
+                               className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-full pl-5 pr-12 py-3 text-sm focus:ring-2 focus:ring-blue-500 text-slate-700 dark:text-slate-200"
+                             />
+                             <button
+                               onClick={() => submitComment(article.id)}
+                               disabled={!draft || isCommenting}
+                               className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 transition"
+                             >
+                                <Send size={14} />
+                             </button>
+                          </div>
+                        </div>
+
+                     </article>
+                   )})
+                 )}
+               </div>
+            </motion.div>
+          )}
+
+
+          {/* TAB: MES PUBLICATIONS (GESTION) */}
+          {activeTab === "publications" && (
             <motion.div key="community" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
                <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-3">
-                 <FileText className="text-blue-600"/> Zone de Publication
+                 <Upload className="text-blue-600"/> Mes Publications
                </h2>
-               <div className="grid lg:grid-cols-3 gap-8">
+               <div className="max-w-4xl mx-auto flex flex-col gap-10">
                  {/* Formulaire */}
-                 <div className="lg:col-span-1">
+                 <div className="w-full">
                    <div className="bg-white dark:bg-slate-950 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-800 sticky top-8">
                      <h3 className="font-bold text-lg text-slate-900 dark:text-slate-100 mb-4">Nouvel Article</h3>
-                     <form onSubmit={handlePublishArticle} className="flex flex-col gap-4">
+                     <form onSubmit={handlePublishArticle} className="grid md:grid-cols-2 gap-5">
                        <div>
                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-400 mb-1">Type de publication</label>
                          <select
@@ -1258,12 +1615,12 @@ export default function DoctorDashboard() {
                            </div>
                          ) : null}
                        </div>
-                        <button type="submit" className="bg-slate-900 dark:bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-slate-800 dark:hover:bg-blue-500 transition shadow-md">Publier l&apos;article</button>
+                        <button type="submit" className="md:col-span-2 bg-slate-900 dark:bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-slate-800 dark:hover:bg-blue-500 transition shadow-md">Publier l&apos;article</button>
                      </form>
                    </div>
                  </div>
                  {/* Liste articles */}
-                 <div className="lg:col-span-2 flex flex-col gap-4">
+                 <div className="w-full flex flex-col gap-4">\n                    <h3 className="font-bold text-xl text-slate-900 dark:text-slate-100 mb-2">Historique des publications</h3>
                    {articles.length === 0 ? <p className="text-slate-400 italic">Vous n&apos;avez publié aucun article.</p> : null}
                    {articles.map(art => (
                      <div key={art.id} className="bg-white dark:bg-slate-950 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-2">
@@ -1301,14 +1658,288 @@ export default function DoctorDashboard() {
             </motion.div>
           )}
 
-          {/* TAB: PATIENTS */}
+          {/* TAB: PATIENTS / DOSSIERS MÉDICAUX */}
           {activeTab === "patients" && (
-            <motion.div key="patients" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="bg-blue-600 text-white rounded-3xl p-8 shadow-lg shadow-blue-200 flex flex-col items-center justify-center text-center">
-                <Users size={64} className="mb-4 opacity-80" />
-                <h2 className="text-2xl font-bold mb-2">Base de données patients</h2>
-                <p className="text-blue-100 max-w-lg mb-6">Visualisez l&apos;historique complet, les notes et les dossiers médicaux sécurisés de vos patients. Module en cours de finalisation.</p>
-                <div className="px-6 py-2 bg-white/20 backdrop-blur rounded-full font-bold text-sm tracking-widest border border-white/30">BIENTÔT DISPONIBLE</div>
+            <motion.div key="patients" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+
+              {/* MODAL: Nouveau Dossier */}
+              <AnimatePresence>
+                {showNewDossierModal && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                      <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2"><UserCircle className="text-blue-500" size={22} /> Nouveau Dossier Patient</h3>
+                        <button onClick={() => setShowNewDossierModal(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition"><X size={20} /></button>
+                      </div>
+                      <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="col-span-2 grid grid-cols-2 gap-4">
+                          <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Prénom *</label>
+                            <input value={newDossierForm.first_name} onChange={e => setNewDossierForm(f => ({ ...f, first_name: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" placeholder="Prénom" /></div>
+                          <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Nom *</label>
+                            <input value={newDossierForm.last_name} onChange={e => setNewDossierForm(f => ({ ...f, last_name: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nom" /></div>
+                        </div>
+                        <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Téléphone</label>
+                          <input value={newDossierForm.phone} onChange={e => setNewDossierForm(f => ({ ...f, phone: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" placeholder="+213 XX XX XX XX" /></div>
+                        <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Email</label>
+                          <input type="email" value={newDossierForm.email} onChange={e => setNewDossierForm(f => ({ ...f, email: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" placeholder="email@exemple.com" /></div>
+                        <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Date de naissance</label>
+                          <input type="date" value={newDossierForm.date_of_birth} onChange={e => setNewDossierForm(f => ({ ...f, date_of_birth: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                        <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Sexe</label>
+                          <select value={newDossierForm.gender} onChange={e => setNewDossierForm(f => ({ ...f, gender: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">Sélectionner...</option><option value="Homme">Homme</option><option value="Femme">Femme</option><option value="Autre">Autre</option>
+                          </select></div>
+                        <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Groupe sanguin</label>
+                          <select value={newDossierForm.blood_type} onChange={e => setNewDossierForm(f => ({ ...f, blood_type: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">Inconnu</option>{['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(t => <option key={t} value={t}>{t}</option>)}
+                          </select></div>
+                        <div className="col-span-2"><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Allergies connues</label>
+                          <input value={newDossierForm.allergies} onChange={e => setNewDossierForm(f => ({ ...f, allergies: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" placeholder="Pénicilline, pollen..." /></div>
+                        <div className="col-span-2"><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Maladies chroniques</label>
+                          <input value={newDossierForm.chronic_conditions} onChange={e => setNewDossierForm(f => ({ ...f, chronic_conditions: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" placeholder="Diabète, hypertension..." /></div>
+                        <div className="col-span-2"><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Remarques générales</label>
+                          <textarea value={newDossierForm.general_remarks} onChange={e => setNewDossierForm(f => ({ ...f, general_remarks: e.target.value }))} rows={3} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 resize-none" placeholder="Notes générales sur ce patient..." /></div>
+                      </div>
+                      <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex gap-3 justify-end">
+                        <button onClick={() => setShowNewDossierModal(false)} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition">Annuler</button>
+                        <button disabled={dossierLoading} onClick={async () => {
+                          if (!newDossierForm.first_name.trim() || !newDossierForm.last_name.trim()) { showNotice('Prénom et nom requis', 'error'); return; }
+                          setDossierLoading(true);
+                          try {
+                            const { data: { user } } = await supabase.auth.getUser();
+                            if (!user) throw new Error('Non authentifié');
+                            const { data, error } = await supabase.from('medical_dossiers').insert({ doctor_id: user.id, first_name: newDossierForm.first_name.trim(), last_name: newDossierForm.last_name.trim(), phone: newDossierForm.phone || null, email: newDossierForm.email || null, date_of_birth: newDossierForm.date_of_birth || null, gender: newDossierForm.gender || null, blood_type: newDossierForm.blood_type || null, allergies: newDossierForm.allergies || null, chronic_conditions: newDossierForm.chronic_conditions || null, general_remarks: newDossierForm.general_remarks || null }).select().single();
+                            if (error) throw error;
+                            setDossiers(prev => [data as MedicalDossier, ...prev]);
+                            setShowNewDossierModal(false);
+                            setNewDossierForm({ first_name: '', last_name: '', phone: '', email: '', date_of_birth: '', gender: '', blood_type: '', allergies: '', chronic_conditions: '', general_remarks: '' });
+                            showNotice('Dossier créé avec succès !', 'success');
+                          } catch (err: unknown) { showNotice((err as Error).message, 'error'); }
+                          setDossierLoading(false);
+                        }} className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-60">
+                          {dossierLoading ? 'Création...' : 'Créer le dossier'}
+                        </button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* MODAL: Nouvelle Visite */}
+              <AnimatePresence>
+                {showNewVisitModal && selectedDossier && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+                      <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2"><Activity className="text-emerald-500" size={22} /> Nouvelle Consultation</h3>
+                        <button onClick={() => setShowNewVisitModal(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition"><X size={20} /></button>
+                      </div>
+                      <div className="p-6 space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Date *</label>
+                            <input type="date" value={newVisitForm.visit_date} onChange={e => setNewVisitForm(f => ({ ...f, visit_date: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500" /></div>
+                          <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Heure</label>
+                            <input type="time" value={newVisitForm.visit_time} onChange={e => setNewVisitForm(f => ({ ...f, visit_time: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500" /></div>
+                        </div>
+                        <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Motif de consultation</label>
+                          <input value={newVisitForm.reason} onChange={e => setNewVisitForm(f => ({ ...f, reason: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Fièvre, douleur abdominale..." /></div>
+                        <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Diagnostic</label>
+                          <textarea value={newVisitForm.diagnosis} onChange={e => setNewVisitForm(f => ({ ...f, diagnosis: e.target.value }))} rows={2} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 resize-none" placeholder="Diagnostic établi..." /></div>
+                        <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Traitement prescrit</label>
+                          <textarea value={newVisitForm.treatment} onChange={e => setNewVisitForm(f => ({ ...f, treatment: e.target.value }))} rows={2} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 resize-none" placeholder="Médicaments, posologie..." /></div>
+                        <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Remarques privées (Dr)</label>
+                          <textarea value={newVisitForm.doctor_notes} onChange={e => setNewVisitForm(f => ({ ...f, doctor_notes: e.target.value }))} rows={2} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 resize-none" placeholder="Notes internes..." /></div>
+                        <div><label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide block mb-1">Date de suivi recommandée</label>
+                          <input type="date" value={newVisitForm.follow_up_date} onChange={e => setNewVisitForm(f => ({ ...f, follow_up_date: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500" /></div>
+                      </div>
+                      <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex gap-3 justify-end">
+                        <button onClick={() => setShowNewVisitModal(false)} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition">Annuler</button>
+                        <button disabled={visitLoading} onClick={async () => {
+                          if (!newVisitForm.visit_date) { showNotice('Date requise', 'error'); return; }
+                          setVisitLoading(true);
+                          try {
+                            const { data, error } = await supabase.from('dossier_visits').insert({ dossier_id: selectedDossier.id, visit_date: newVisitForm.visit_date, visit_time: newVisitForm.visit_time || null, reason: newVisitForm.reason || null, diagnosis: newVisitForm.diagnosis || null, treatment: newVisitForm.treatment || null, doctor_notes: newVisitForm.doctor_notes || null, follow_up_date: newVisitForm.follow_up_date || null }).select().single();
+                            if (error) throw error;
+                            setDossierVisits(prev => [data as DossierVisit, ...prev]);
+                            setShowNewVisitModal(false);
+                            setNewVisitForm({ visit_date: new Date().toISOString().split('T')[0], visit_time: '', reason: '', diagnosis: '', treatment: '', doctor_notes: '', follow_up_date: '' });
+                            showNotice('Consultation ajoutée !', 'success');
+                          } catch (err: unknown) { showNotice((err as Error).message, 'error'); }
+                          setVisitLoading(false);
+                        }} className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition shadow-lg shadow-emerald-200 dark:shadow-none disabled:opacity-60">
+                          {visitLoading ? 'Enregistrement...' : 'Enregistrer'}
+                        </button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* HEADER */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2"><ClipboardList className="text-blue-500" size={26} /> Dossiers Médicaux</h1>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">{dossiers.length} patient{dossiers.length !== 1 ? 's' : ''} enregistré{dossiers.length !== 1 ? 's' : ''}</p>
+                </div>
+                <button onClick={() => setShowNewDossierModal(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-3 rounded-2xl transition shadow-lg shadow-blue-200 dark:shadow-none">
+                  <Plus size={18} /> Nouveau Dossier
+                </button>
+              </div>
+
+              {/* MAIN LAYOUT: LIST + DETAIL */}
+              <div className="grid lg:grid-cols-3 gap-6">
+
+                {/* LEFT: Liste des dossiers */}
+                <div className="lg:col-span-1 bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+                    <div className="relative">
+                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input value={dossierSearch} onChange={e => setDossierSearch(e.target.value)} placeholder="Rechercher un patient..." className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-4 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  </div>
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[600px] overflow-y-auto" onClick={() => { /* load dossiers on mount */ }}>
+                    {dossiers.filter(d => `${d.first_name} ${d.last_name}`.toLowerCase().includes(dossierSearch.toLowerCase())).length === 0 ? (
+                      <div className="p-8 text-center text-slate-400 dark:text-slate-500">
+                        <UserCircle size={40} className="mx-auto mb-3 opacity-40" />
+                        <p className="text-sm font-medium">Aucun dossier trouvé</p>
+                        {dossiers.length === 0 && <p className="text-xs mt-1">Cliquez sur &quot;Nouveau Dossier&quot; pour commencer</p>}
+                      </div>
+                    ) : (
+                      dossiers.filter(d => `${d.first_name} ${d.last_name}`.toLowerCase().includes(dossierSearch.toLowerCase())).map(dossier => (
+                        <button key={dossier.id} onClick={async () => {
+                          setSelectedDossier(dossier);
+                          setExpandedVisitId(null);
+                          const { data } = await supabase.from('dossier_visits').select('*').eq('dossier_id', dossier.id).order('visit_date', { ascending: false });
+                          setDossierVisits((data as DossierVisit[]) ?? []);
+                          setGeneralRemarksEdit(dossier.general_remarks ?? '');
+                          setEditingGeneralRemarks(false);
+                        }} className={`w-full text-left px-4 py-3.5 flex items-center gap-3 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition group ${selectedDossier?.id === dossier.id ? 'bg-blue-50 dark:bg-blue-950/40 border-l-4 border-blue-600' : ''}`}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${dossier.gender === 'Femme' ? 'bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'}`}>
+                            {dossier.first_name[0]}{dossier.last_name[0]}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{dossier.first_name} {dossier.last_name}</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{dossier.phone ?? dossier.email ?? 'Aucun contact'}</p>
+                          </div>
+                          <ChevronRight size={16} className="text-slate-300 dark:text-slate-600 shrink-0 group-hover:text-blue-500 transition" />
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* RIGHT: Détail du dossier */}
+                <div className="lg:col-span-2">
+                  {!selectedDossier ? (
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-12 text-center flex flex-col items-center justify-center min-h-[400px] shadow-sm">
+                      <ClipboardList size={56} className="text-slate-200 dark:text-slate-700 mb-4" />
+                      <p className="text-slate-500 dark:text-slate-400 font-medium">Sélectionnez un dossier pour voir les détails</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Fiche patient */}
+                      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-center gap-4">
+                            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-bold ${selectedDossier.gender === 'Femme' ? 'bg-pink-100 dark:bg-pink-900/30 text-pink-600' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600'}`}>
+                              {selectedDossier.first_name[0]}{selectedDossier.last_name[0]}
+                            </div>
+                            <div>
+                              <h2 className="text-xl font-bold text-slate-900 dark:text-white">{selectedDossier.first_name} {selectedDossier.last_name}</h2>
+                              <div className="flex items-center gap-3 mt-1 flex-wrap">
+                                {selectedDossier.gender && <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{selectedDossier.gender}</span>}
+                                {selectedDossier.blood_type && <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400">🩸 {selectedDossier.blood_type}</span>}
+                                {selectedDossier.date_of_birth && <span className="text-xs text-slate-500 dark:text-slate-400">Né(e) le {new Date(selectedDossier.date_of_birth).toLocaleDateString('fr-FR')}</span>}
+                              </div>
+                            </div>
+                          </div>
+                          <button onClick={async () => {
+                            if (!confirm('Supprimer définitivement ce dossier ?')) return;
+                            const { error } = await supabase.from('medical_dossiers').delete().eq('id', selectedDossier.id);
+                            if (!error) { setDossiers(prev => prev.filter(d => d.id !== selectedDossier.id)); setSelectedDossier(null); setDossierVisits([]); showNotice('Dossier supprimé.', 'info'); }
+                          }} className="p-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/30 text-slate-400 hover:text-red-500 transition">
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                          {selectedDossier.phone && <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300"><Phone size={14} className="text-slate-400" />{selectedDossier.phone}</div>}
+                          {selectedDossier.email && <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 col-span-2 sm:col-span-1 truncate"><FileText size={14} className="text-slate-400 shrink-0" />{selectedDossier.email}</div>}
+                          {selectedDossier.allergies && <div className="col-span-2 sm:col-span-3 text-xs bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 px-3 py-2 rounded-xl border border-amber-100 dark:border-amber-900/50">⚠️ Allergies: {selectedDossier.allergies}</div>}
+                          {selectedDossier.chronic_conditions && <div className="col-span-2 sm:col-span-3 text-xs bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 px-3 py-2 rounded-xl border border-purple-100 dark:border-purple-900/50"><Stethoscope size={12} className="inline mr-1" />Chroniques: {selectedDossier.chronic_conditions}</div>}
+                        </div>
+                      </div>
+
+                      {/* Remarques générales */}
+                      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="font-bold text-slate-900 dark:text-white">Remarques Générales</h3>
+                          <button onClick={() => { if (editingGeneralRemarks) { setEditingGeneralRemarks(false); } else { setGeneralRemarksEdit(selectedDossier.general_remarks ?? ''); setEditingGeneralRemarks(true); } }} className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"><Pencil size={12} />{editingGeneralRemarks ? 'Annuler' : 'Modifier'}</button>
+                        </div>
+                        {editingGeneralRemarks ? (
+                          <div className="space-y-3">
+                            <textarea value={generalRemarksEdit} onChange={e => setGeneralRemarksEdit(e.target.value)} rows={4} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm" placeholder="Observations générales sur ce patient..." />
+                            <button onClick={async () => {
+                              const { error } = await supabase.from('medical_dossiers').update({ general_remarks: generalRemarksEdit }).eq('id', selectedDossier.id);
+                              if (!error) { setSelectedDossier(d => d ? { ...d, general_remarks: generalRemarksEdit } : d); setDossiers(prev => prev.map(d => d.id === selectedDossier.id ? { ...d, general_remarks: generalRemarksEdit } : d)); setEditingGeneralRemarks(false); showNotice('Remarques mises à jour !', 'success'); }
+                            }} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition">Sauvegarder</button>
+                          </div>
+                        ) : (
+                          <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">{selectedDossier.general_remarks || <span className="italic text-slate-400">Aucune remarque générale.</span>}</p>
+                        )}
+                      </div>
+
+                      {/* Historique des consultations */}
+                      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2"><Activity size={18} className="text-emerald-500" /> Consultations ({dossierVisits.length})</h3>
+                          <button onClick={() => setShowNewVisitModal(true)} className="flex items-center gap-1.5 text-sm font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 rounded-xl transition">
+                            <Plus size={14} /> Ajouter
+                          </button>
+                        </div>
+                        {dossierVisits.length === 0 ? (
+                          <div className="text-center py-8 text-slate-400 dark:text-slate-500">
+                            <Activity size={32} className="mx-auto mb-2 opacity-30" />
+                            <p className="text-sm">Aucune consultation enregistrée</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {dossierVisits.map(visit => (
+                              <div key={visit.id} className="border border-slate-100 dark:border-slate-800 rounded-2xl overflow-hidden">
+                                <button onClick={() => setExpandedVisitId(expandedVisitId === visit.id ? null : visit.id)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition text-left">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center">
+                                      <CalendarIcon size={16} className="text-emerald-500" />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-bold text-slate-900 dark:text-white">{new Date(visit.visit_date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-xs">{visit.reason ?? 'Consultation générale'}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {visit.follow_up_date && <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded-full">Suivi: {new Date(visit.follow_up_date).toLocaleDateString('fr-FR')}</span>}
+                                    <button onClick={async (e) => { e.stopPropagation(); if (!confirm('Supprimer cette consultation ?')) return; await supabase.from('dossier_visits').delete().eq('id', visit.id); setDossierVisits(prev => prev.filter(v => v.id !== visit.id)); showNotice('Consultation supprimée.', 'info'); }} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-slate-300 hover:text-red-400 transition"><Trash2 size={14} /></button>
+                                    <ChevronDown size={16} className={`text-slate-400 transition-transform ${expandedVisitId === visit.id ? 'rotate-180' : ''}`} />
+                                  </div>
+                                </button>
+                                <AnimatePresence>
+                                  {expandedVisitId === visit.id && (
+                                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                                      <div className="px-4 pb-4 space-y-3 border-t border-slate-100 dark:border-slate-800 pt-3">
+                                        {visit.diagnosis && <div className="bg-blue-50 dark:bg-blue-950/30 rounded-xl p-3"><p className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-1">Diagnostic</p><p className="text-sm text-slate-700 dark:text-slate-300">{visit.diagnosis}</p></div>}
+                                        {visit.treatment && <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-xl p-3"><p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-1">Traitement</p><p className="text-sm text-slate-700 dark:text-slate-300">{visit.treatment}</p></div>}
+                                        {visit.doctor_notes && <div className="bg-amber-50 dark:bg-amber-950/30 rounded-xl p-3"><p className="text-xs font-bold text-amber-600 dark:text-amber-400 mb-1">🔒 Notes du médecin (privé)</p><p className="text-sm text-slate-700 dark:text-slate-300">{visit.doctor_notes}</p></div>}
+                                        {!visit.diagnosis && !visit.treatment && !visit.doctor_notes && <p className="text-sm text-slate-400 italic">Aucun détail ajouté pour cette consultation.</p>}
+                                      </div>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </motion.div>
           )}
@@ -1607,7 +2238,31 @@ export default function DoctorDashboard() {
           </div>
         ) : null}
       </AnimatePresence>
-    </div>
+    
+      <AnimatePresence>
+        {reportTarget && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-xl w-full max-w-sm">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Signaler</h3>
+              <form onSubmit={submitReport}>
+                <select value={reportReason} onChange={(e) => setReportReason(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 outline-none mb-4 text-sm text-slate-700 dark:text-slate-300">
+                  <option value="Contenu inapproprié">Contenu inapproprié</option>
+                  <option value="Spam">Spam ou publicité</option>
+                  <option value="Désinformation médicale">Désinformation médicale</option>
+                </select>
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setReportTarget(null)} className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl font-medium transition text-sm">Annuler</button>
+                  <button type="submit" disabled={isSubmittingReport} className="flex-1 px-4 py-2 bg-rose-600 text-white hover:bg-rose-700 rounded-xl font-medium transition disabled:bg-rose-400 text-sm">
+                    {isSubmittingReport ? "Envoi..." : "Signaler"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+</div>
   );
 }
 // made by larabi
