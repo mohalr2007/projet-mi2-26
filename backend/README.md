@@ -38,6 +38,10 @@ Copy `.env.example` and fill at least:
 - `RESEND_API_KEY`
 - `CRON_SECRET`
 
+Optional:
+
+- `EMAIL_REMINDERS_ENABLED=true` only if you actually want appointment reminder emails enabled. By default keep it disabled.
+
 ## Render
 
 - Root directory: `TIRYAQ/backend`
@@ -45,3 +49,4 @@ Copy `.env.example` and fill at least:
 - Start command: `npm run start`
 
 `render.yaml` is included as a deployment base.
+"# tiryaq-backeend" 
