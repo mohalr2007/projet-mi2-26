@@ -29,7 +29,13 @@ import {
 import { Logo } from "../components/Logo";
 import { AnimatedButton } from "../components/AnimatedButton";
 import ThemeToggle from "@/components/ThemeToggle";
-import { getSafeAuthSession, getStableAuthUser, supabase } from "@/utils/supabase/client";
+import {
+  clearSupabaseAuthSnapshot,
+  getSafeAuthSession,
+  getStableAuthUser,
+  isMissingRefreshTokenError,
+  supabase,
+} from "@/utils/supabase/client";
 import { useI18n } from "@/lib/i18n";
 type DashboardWindowState = {
   title: string;
@@ -202,10 +208,12 @@ function AudienceCard({
   bullets: string[];
   action?: React.ReactNode;
 }) {
+  const { t } = useI18n();
+
   return (
     <div className="w-full min-w-0 max-w-full overflow-hidden rounded-[32px] border border-slate-200/80 bg-white/90 p-6 shadow-[0_24px_90px_-55px_rgba(15,23,42,0.45)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/80 sm:p-7">
       <div className={`mb-4 inline-flex rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.22em] ${accent}`}>
-        Espace dédié
+        {t("home.audience.badge")}
       </div>
       <h3 className="break-words text-xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-2xl">{title}</h3>
       <p className="mt-3 text-base leading-7 text-slate-600 dark:text-slate-400">{description}</p>
@@ -249,6 +257,8 @@ function DashboardWindow({
   dashboardWindow: DashboardWindowState | null;
   setDashboardWindow: React.Dispatch<React.SetStateAction<DashboardWindowState | null>>;
 }) {
+  const { t } = useI18n();
+
   if (!dashboardWindow) {
     return null;
   }
@@ -313,7 +323,7 @@ function DashboardWindow({
             }
             className="w-full bg-slate-50 px-4 py-3 text-left text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-800"
           >
-            Fenêtre minimisée. Cliquez pour reprendre.
+            {t("home.window.minimized")}
           </button>
         ) : null}
       </div>
@@ -698,7 +708,8 @@ export default function Landing() {
       }
 
       const { session, error: sessionError } = await getSafeAuthSession();
-      if (sessionError && sessionError.includes("Refresh Token Not Found")) {
+      if (isMissingRefreshTokenError(sessionError)) {
+        clearSupabaseAuthSnapshot();
         await supabase.auth.signOut();
       }
 
@@ -1117,7 +1128,7 @@ export default function Landing() {
                     <button
                       onClick={() =>
                         openDashboardWindow(
-                          accountType === "doctor" ? "Dashboard Docteur" : "Dashboard Patient",
+                          accountType === "doctor" ? t("home.dashboard.doctorTitle") : t("home.dashboard.patientTitle"),
                           accountType === "doctor" ? "appointments" : "overview"
                         )
                       }
